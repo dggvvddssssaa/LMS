@@ -12,45 +12,40 @@ const io = new Server(server, {
 });
 
 // State
-const users = {}; // id -> { roomId, username, mediaStatus }
+const users = {};
 const socketToRoom = {};
 const whiteboardHistory = {};
 const currentSlide = {};
 
 io.on("connection", (socket) => {
-  // 1. Join Room: Nhận thêm mediaStatus (mic/cam ban đầu)
   socket.on("join_room", ({ roomId, username, mediaStatus }) => {
     socket.join(roomId);
-
-    // Lưu trạng thái ban đầu
     users[socket.id] = { roomId, username, mediaStatus };
     socketToRoom[socket.id] = roomId;
 
     const usersInRoom = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
     const otherUsers = usersInRoom.filter((id) => id !== socket.id);
 
-    // Gửi danh sách người cũ (kèm mediaStatus) cho người mới
     const usersPayload = otherUsers.map((id) => ({
       id,
       username: users[id]?.username || "Anonymous",
-      mediaStatus: users[id]?.mediaStatus || { video: true, audio: true }, // Mặc định true
+      mediaStatus: users[id]?.mediaStatus || { video: true, audio: true },
     }));
 
     socket.emit("all_users", usersPayload);
 
-    // Gửi Whiteboard history (nếu có)
     if (whiteboardHistory[roomId])
       socket.emit("whiteboard_history", whiteboardHistory[roomId]);
     if (currentSlide[roomId]) socket.emit("slide_change", currentSlide[roomId]);
   });
 
-  // 2. Logic WebRTC (Cập nhật để gửi kèm mediaStatus của người gọi)
   socket.on("sending_signal", (payload) => {
     io.to(payload.userToCall).emit("user_joined", {
       signal: payload.signal,
       callerID: payload.callerID,
       callerUsername: users[payload.callerID]?.username,
-      mediaStatus: users[payload.callerID]?.mediaStatus, // Gửi trạng thái mic/cam
+      mediaStatus: users[payload.callerID]?.mediaStatus,
+      isScreen: payload.isScreen,
     });
   });
 
@@ -58,24 +53,26 @@ io.on("connection", (socket) => {
     io.to(payload.callerID).emit("receiving_returned_signal", {
       signal: payload.signal,
       id: socket.id,
+      isScreen: payload.isScreen,
     });
   });
 
-  // 3. Sync Media Status (Khi user tắt/bật mic/cam)
-  socket.on("media_status_change", (status) => {
+  socket.on("user_media_update", ({ userId, status }) => {
     const roomId = users[socket.id]?.roomId;
-    if (users[socket.id]) {
-      users[socket.id].mediaStatus = status; // Cập nhật server
-    }
+    if (users[socket.id]) users[socket.id].mediaStatus = status;
+    if (roomId) socket.to(roomId).emit("user_media_update", { userId, status });
+  });
+
+  // --- FIX: THÊM SỰ KIỆN STOP SHARE ---
+  socket.on("stop_screen_share", () => {
+    const roomId = users[socket.id]?.roomId;
     if (roomId) {
-      // Báo cho mọi người trong phòng biết
-      socket
-        .to(roomId)
-        .emit("user_media_update", { userId: socket.id, status });
+      // Báo cho mọi người biết user này đã tắt màn hình
+      socket.to(roomId).emit("user_stopped_screen", socket.id);
     }
   });
 
-  // ... (Giữ nguyên logic Whiteboard: request, draw, clear, slide) ...
+  // Whiteboard Logic
   socket.on("request_whiteboard", () => {
     const roomId = users[socket.id]?.roomId;
     if (roomId && whiteboardHistory[roomId])
