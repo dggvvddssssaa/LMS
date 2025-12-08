@@ -4,33 +4,34 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL") 
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(STUDENT)
-  courses   Course[] @relation("TeacherCourses")
+  id          Int          @id @default(autoincrement())
+  email       String       @unique
+  password    String
+  name        String
+  role        Role         @default(STUDENT)
+  courses     Course[]     @relation("TeacherCourses")
   enrollments Enrollment[]
 }
 
 model Course {
-  id          Int      @id @default(autoincrement())
+  id          Int          @id @default(autoincrement())
   title       String
   description String?
   teacherId   Int
-  teacher     User     @relation("TeacherCourses", fields: [teacherId], references: [id])
+  teacher     User         @relation("TeacherCourses", fields: [teacherId], references: [id])
   students    Enrollment[]
-  createdAt   DateTime @default(now())
+  createdAt   DateTime     @default(now())
 }
 
 model Enrollment {
-  userId    Int
-  courseId  Int
-  user      User   @relation(fields: [userId], references: [id])
-  course    Course @relation(fields: [courseId], references: [id])
+  userId   Int
+  courseId Int
+  user     User   @relation(fields: [userId], references: [id])
+  course   Course @relation(fields: [courseId], references: [id])
 
   @@id([userId, courseId])
 }
