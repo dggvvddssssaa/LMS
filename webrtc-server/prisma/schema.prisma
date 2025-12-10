@@ -1,42 +1,96 @@
+// prisma/schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL") 
+  url      = env("DATABASE_URL")
 }
 
+// 1. Bảng Người dùng
 model User {
-  id          Int          @id @default(autoincrement())
-  email       String       @unique
-  password    String
-  name        String
-  role        Role         @default(STUDENT)
-  courses     Course[]     @relation("TeacherCourses")
-  enrollments Enrollment[]
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String   // Lưu hash password
+  name      String
+  avatar    String?  // URL ảnh đại diện (Optional)
+  role      Role     @default(STUDENT)
+  
+  // Quan hệ
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  courses     Course[] @relation("InstructorCourses") // Các khóa học do người này dạy (nếu là GV)
+  enrollments Enrollment[] // Các khóa học đã mua (nếu là HS)
 }
 
+// 2. Bảng Khóa học
 model Course {
-  id          Int          @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   title       String
-  description String?
-  teacherId   Int
-  teacher     User         @relation("TeacherCourses", fields: [teacherId], references: [id])
-  students    Enrollment[]
-  createdAt   DateTime     @default(now())
+  description String?  @db.Text // Cho phép lưu văn bản dài
+  thumbnail   String?  // URL ảnh bìa khóa học
+  price       Decimal  @default(0) @db.Decimal(10, 2) // Giá tiền (VD: 199.00)
+  
+  instructorId Int
+  instructor   User    @relation("InstructorCourses", fields: [instructorId], references: [id])
+
+  // Quan hệ
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  lessons      Lesson[]      // Danh sách bài giảng video
+  liveSessions LiveSession[] // Danh sách các buổi học Live (WebRTC)
+  students     Enrollment[]  // Danh sách học viên đã mua
 }
 
+// 3. Bảng Bài học (Video quay sẵn)
+model Lesson {
+  id          Int      @id @default(autoincrement())
+  title       String
+  content     String?  @db.Text // Nội dung chi tiết bài học
+  videoUrl    String?  // Link video (YouTube/Vimeo/S3)
+  order       Int      @default(1) // Thứ tự bài học (Bài 1, Bài 2...)
+  
+  courseId    Int
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+}
+
+// 4. Bảng Đăng ký (Học viên mua khóa học) - Bảng trung gian
 model Enrollment {
-  userId   Int
-  courseId Int
-  user     User   @relation(fields: [userId], references: [id])
-  course   Course @relation(fields: [courseId], references: [id])
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  courseId  Int
+  enrolledAt DateTime @default(now())
+  
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
-  @@id([userId, courseId])
+  // Đảm bảo 1 user không thể mua 1 khóa học 2 lần
+  @@unique([userId, courseId])
 }
 
+// 5. Bảng Phiên Live (Tích hợp WebRTC của bạn vào đây)
+model LiveSession {
+  id          Int      @id @default(autoincrement())
+  title       String
+  startTime   DateTime
+  endTime     DateTime?
+  description String?
+  
+  // Khi user vào phòng, RoomID của socket sẽ chính là "session-{id}"
+  courseId    Int
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now())
+}
+
+// Phân quyền
 enum Role {
   STUDENT
-  TEACHER
+  INSTRUCTOR
+  ADMIN
 }
