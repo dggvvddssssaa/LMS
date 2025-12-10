@@ -1,72 +1,119 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import io from "socket.io-client";
 
+// --- HOOK: DETECT ACTIVE SPEAKER ---
+const useAudioActivity = (stream, isAudioEnabled = true) => {
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  useEffect(() => {
+    if (!stream || !isAudioEnabled || stream.getAudioTracks().length === 0) {
+      setIsSpeaking(false);
+      return;
+    }
+
+    let audioContext;
+    let analyser;
+    let microphone;
+    let javascriptNode;
+
+    try {
+      audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      analyser = audioContext.createAnalyser();
+      microphone = audioContext.createMediaStreamSource(stream);
+      javascriptNode = audioContext.createScriptProcessor(2048, 1, 1);
+
+      analyser.smoothingTimeConstant = 0.8;
+      analyser.fftSize = 1024;
+
+      microphone.connect(analyser);
+      analyser.connect(javascriptNode);
+      javascriptNode.connect(audioContext.destination);
+
+      javascriptNode.onaudioprocess = () => {
+        if (!isAudioEnabled) return;
+        const array = new Uint8Array(analyser.frequencyBinCount);
+        analyser.getByteFrequencyData(array);
+        let values = 0;
+        const length = array.length;
+        for (let i = 0; i < length; i++) values += array[i];
+        const average = values / length;
+        setIsSpeaking(average > 10);
+      };
+    } catch (e) {
+      console.error("Audio Context Error:", e);
+    }
+
+    return () => {
+      if (javascriptNode) javascriptNode.disconnect();
+      if (analyser) analyser.disconnect();
+      if (microphone) microphone.disconnect();
+      if (audioContext && audioContext.state !== "closed") audioContext.close();
+    };
+  }, [stream, isAudioEnabled]);
+
+  return isSpeaking;
+};
+
 // --- WHITEBOARD (GIỮ NGUYÊN) ---
 const Whiteboard = ({ socket }) => {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [color, setColor] = useState("#000000");
   const [slideImage, setSlideImage] = useState(null);
+  const [color, setColor] = useState("#000000");
   const lastPos = useRef({ x: 0, y: 0 });
-
+  const [isDrawing, setIsDrawing] = useState(false);
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    const resizeCanvas = () => {
-      if (containerRef.current && canvas) {
+    const resize = () => {
+      if (containerRef.current) {
         canvas.width = containerRef.current.offsetWidth;
         canvas.height = containerRef.current.offsetHeight;
         socket.emit("request_whiteboard");
       }
     };
-    const drawLine = ({ x0, y0, x1, y1, color, width, emit }) => {
+    const drawLine = (d, emit) => {
       ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = width;
+      ctx.moveTo(d.x0, d.y0);
+      ctx.lineTo(d.x1, d.y1);
+      ctx.strokeStyle = d.color;
+      ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.stroke();
-      ctx.closePath();
-      if (emit) socket.emit("draw", { x0, y0, x1, y1, color, width });
+      if (emit) socket.emit("draw", d);
     };
-    socket.on("draw", (data) => drawLine({ ...data, emit: false }));
+    socket.on("draw", (d) => drawLine(d, false));
     socket.on("clear_board", () =>
       ctx.clearRect(0, 0, canvas.width, canvas.height)
     );
-    socket.on("whiteboard_history", (history) => {
+    socket.on("whiteboard_history", (h) => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      history.forEach((item) => drawLine({ ...item, emit: false }));
+      h.forEach((d) => drawLine(d, false));
     });
-    socket.on("slide_change", (imgData) => setSlideImage(imgData));
-    resizeCanvas();
-    window.addEventListener("resize", resizeCanvas);
+    socket.on("slide_change", (img) => setSlideImage(img));
+    resize();
+    window.addEventListener("resize", resize);
     return () => {
       socket.off("draw");
       socket.off("clear_board");
       socket.off("whiteboard_history");
       socket.off("slide_change");
-      window.removeEventListener("resize", resizeCanvas);
+      window.removeEventListener("resize", resize);
     };
   }, [socket]);
-
-  const getPos = (e) => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    if (e.touches)
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top,
-      };
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-  };
-  const startDrawing = (e) => {
+  const start = (e) => {
     setIsDrawing(true);
-    lastPos.current = getPos(e);
+    const r = canvasRef.current.getBoundingClientRect();
+    lastPos.current = {
+      x: (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
+      y: (e.touches ? e.touches[0].clientY : e.clientY) - r.top,
+    };
   };
   const draw = (e) => {
     if (!isDrawing) return;
-    const { x, y } = getPos(e);
+    const r = canvasRef.current.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left,
+      y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
     const ctx = canvasRef.current.getContext("2d");
     ctx.beginPath();
     ctx.moveTo(lastPos.current.x, lastPos.current.y);
@@ -75,7 +122,6 @@ const Whiteboard = ({ socket }) => {
     ctx.lineWidth = 3;
     ctx.lineCap = "round";
     ctx.stroke();
-    ctx.closePath();
     socket.emit("draw", {
       x0: lastPos.current.x,
       y0: lastPos.current.y,
@@ -86,61 +132,50 @@ const Whiteboard = ({ socket }) => {
     });
     lastPos.current = { x, y };
   };
-  const handleImageUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-        setSlideImage(evt.target.result);
-        socket.emit("change_slide", evt.target.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
   return (
-    <div className="relative w-full h-full bg-white flex flex-col rounded-xl overflow-hidden shadow-2xl">
-      <div className="h-12 bg-gray-200 flex items-center px-4 gap-4 border-b border-gray-300 z-20">
-        <span className="font-bold text-gray-700">✏️ Draw:</span>
+    <div className="relative w-full h-full bg-white flex flex-col rounded-xl overflow-hidden">
+      <div className="h-10 bg-gray-200 flex items-center px-4 gap-2 border-b">
         <input
           type="color"
           value={color}
           onChange={(e) => setColor(e.target.value)}
-          className="cursor-pointer h-8 w-8"
         />
         <button
           onClick={() => socket.emit("clear_board")}
-          className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm"
+          className="bg-red-500 text-white text-xs px-2 py-1 rounded"
         >
           Clear
         </button>
-        <label className="ml-auto bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm cursor-pointer">
-          🖼️ Slide{" "}
+        <label className="ml-auto text-xs bg-blue-500 text-white px-2 py-1 rounded cursor-pointer">
+          Slide{" "}
           <input
             type="file"
-            accept="image/*"
             className="hidden"
-            onChange={handleImageUpload}
+            onChange={(e) => {
+              const r = new FileReader();
+              r.onload = (ev) => {
+                setSlideImage(ev.target.result);
+                socket.emit("change_slide", ev.target.result);
+              };
+              if (e.target.files[0]) r.readAsDataURL(e.target.files[0]);
+            }}
           />
         </label>
       </div>
-      <div
-        className="flex-1 relative bg-gray-100 overflow-hidden"
-        ref={containerRef}
-      >
+      <div className="flex-1 relative bg-gray-100" ref={containerRef}>
         {slideImage && (
           <img
             src={slideImage}
-            alt="Slide"
-            className="absolute inset-0 w-full h-full object-contain pointer-events-none z-0"
+            className="absolute inset-0 w-full h-full object-contain pointer-events-none"
           />
         )}
         <canvas
           ref={canvasRef}
           className="absolute inset-0 z-10 cursor-crosshair touch-none"
-          onMouseDown={startDrawing}
+          onMouseDown={start}
           onMouseMove={draw}
           onMouseUp={() => setIsDrawing(false)}
-          onTouchStart={startDrawing}
+          onTouchStart={start}
           onTouchMove={draw}
           onTouchEnd={() => setIsDrawing(false)}
         />
@@ -161,59 +196,76 @@ const VideoCard = ({
   isScreenSharing,
 }) => {
   const videoRef = useRef();
-  const shouldShowVideo =
+
+  const isAudioEnabled = mediaStatus ? mediaStatus.audio : true;
+  const isSpeaking = useAudioActivity(stream, isAudioEnabled);
+
+  const isVideoVisible =
     isScreenSharing || (mediaStatus ? mediaStatus.video : true);
 
   useEffect(() => {
-    if (videoRef.current && stream) videoRef.current.srcObject = stream;
-  }, [stream, shouldShowVideo]);
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  const borderStyle =
+    isSpeaking && !isLocal
+      ? "ring-4 ring-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)] scale-[1.02]"
+      : isPinned
+      ? "ring-4 ring-blue-500"
+      : "hover:ring-1 hover:ring-gray-500";
 
   return (
     <div
       onClick={onClick}
-      className={`relative bg-gray-800 rounded-xl overflow-hidden shadow-md cursor-pointer transition-all duration-300 group ${
-        isPinned ? "ring-4 ring-blue-500" : "hover:ring-2 hover:ring-gray-500"
-      } ${
-        isMainStage ? "w-full h-full bg-black" : "w-full h-full aspect-video"
+      className={`relative bg-gray-900 rounded-xl overflow-hidden shadow-md cursor-pointer transition-all duration-200 group ${borderStyle} ${
+        isMainStage ? "w-full h-full" : "w-full h-full aspect-video"
       }`}
     >
-      {shouldShowVideo ? (
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          muted={isLocal} // QUAN TRỌNG: Local luôn mute để tránh vọng âm
-          className={`w-full h-full ${
-            isMainStage || isScreenSharing ? "object-contain" : "object-cover"
-          }`}
-        />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center bg-gray-900">
-          <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-3xl font-bold text-white shadow-lg">
+      <video
+        ref={videoRef}
+        autoPlay
+        playsInline
+        muted={isLocal}
+        className={`w-full h-full transition-opacity duration-300 ${
+          isMainStage || isScreenSharing ? "object-contain" : "object-cover"
+        } ${isVideoVisible ? "opacity-100" : "opacity-0"}`}
+      />
+
+      {!isVideoVisible && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gray-800 z-10">
+          <div
+            className={`w-20 h-20 rounded-full flex items-center justify-center text-3xl font-bold text-white shadow-lg transition-transform duration-100 ${
+              isSpeaking ? "bg-green-600 scale-110" : "bg-blue-600"
+            }`}
+          >
             {username ? username.charAt(0).toUpperCase() : "?"}
           </div>
         </div>
       )}
-      <div
-        className={`absolute left-2 flex items-center gap-2 px-2 py-1 rounded bg-black/60 backdrop-blur-sm ${
-          isMainStage ? "bottom-4 text-base" : "bottom-2 text-xs"
-        }`}
-      >
-        {!isScreenSharing && (
-          <div
-            className={`rounded-full ${
-              mediaStatus?.audio ? "bg-green-500 animate-pulse" : "bg-red-500"
-            } w-2 h-2`}
-          ></div>
-        )}
-        <span className="text-white font-medium truncate max-w-[150px]">
-          {username} {isLocal && "(You)"}
-        </span>
-        {isScreenSharing && (
-          <span className="bg-white text-blue-600 text-[10px] px-1 rounded font-bold">
-            SCREEN
+
+      <div className="absolute left-2 bottom-2 right-2 flex items-center justify-between px-3 py-1.5 rounded-lg bg-black/60 backdrop-blur-md z-20">
+        <div className="flex items-center gap-2 overflow-hidden">
+          {!isScreenSharing && (
+            <div
+              className={`w-2.5 h-2.5 rounded-full ${
+                mediaStatus?.audio ? "bg-green-500" : "bg-red-500"
+              }`}
+            ></div>
+          )}
+          <span className="text-white text-xs font-bold truncate">
+            {username} {isLocal && "(You)"}
           </span>
-        )}
+        </div>
+        <div className="flex gap-2 text-xs">
+          {isScreenSharing && (
+            <span className="bg-blue-600 text-white px-1.5 rounded font-bold">
+              SCREEN
+            </span>
+          )}
+          {!mediaStatus?.audio && <span className="text-red-400">🔇</span>}
+        </div>
       </div>
     </div>
   );
@@ -221,7 +273,7 @@ const VideoCard = ({
 
 const stunServers = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
 
-// --- COMPONENT CHÍNH ---
+// --- MAIN LOGIC ---
 const ClassRoom = ({ user, courseId, onLeave }) => {
   const [joined, setJoined] = useState(false);
   const username = user.name;
@@ -234,7 +286,6 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
   const [pinnedPeerID, setPinnedPeerID] = useState(null);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
 
-  // State mic/cam
   const [isMicOn, setIsMicOn] = useState(true);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
@@ -246,24 +297,31 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
 
   useEffect(() => {
     joinRoom();
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-      if (userStreamRef.current)
-        userStreamRef.current.getTracks().forEach((t) => t.stop());
-      if (screenStreamRef.current)
-        screenStreamRef.current.getTracks().forEach((t) => t.stop());
-    };
+    return () => leaveAndCleanup();
     // eslint-disable-next-line
   }, []);
 
+  const leaveAndCleanup = () => {
+    if (userStreamRef.current)
+      userStreamRef.current.getTracks().forEach((t) => t.stop());
+    if (screenStreamRef.current)
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+    if (socketRef.current) socketRef.current.disconnect();
+    peersRef.current.forEach((p) => p.peer.close());
+  };
+
   const joinRoom = () => {
     if (socketRef.current) socketRef.current.disconnect();
-
     socketRef.current = io.connect("http://localhost:3001");
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
+        if (!socketRef.current || !socketRef.current.connected) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+
         userStreamRef.current = stream;
         setUserStream(stream);
         setJoined(true);
@@ -308,7 +366,6 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
           const finalUsername = payload.isScreen
             ? payload.callerUsername + "'s Screen"
             : payload.callerUsername;
-
           if (peersRef.current.find((p) => p.peerID === finalPeerID)) return;
 
           const peer = addPeer(
@@ -355,12 +412,12 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
             ? payload.id + "_screen"
             : payload.id;
           let item = peersRef.current.find((p) => p.peerID === targetID);
-          if (!item && payload.isScreen) {
+          if (!item && payload.isScreen)
             item = peersRef.current.find(
               (p) => p.peerID === payload.id + "_screen_sender"
             );
-          }
-          if (item) handleSignal(item.peer, payload.signal);
+          if (item)
+            handleSignal(item.peer, payload.signal, null, payload.isScreen);
         });
 
         socketRef.current.on("user_left", (id) => {
@@ -383,13 +440,19 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
           );
         });
 
+        // --- FIX XÓA MÀN HÌNH ĐEN ---
         socketRef.current.on("user_stopped_screen", (userId) => {
           const screenID = userId + "_screen";
+          console.log("Removing screen share from:", screenID);
+
           const p = peersRef.current.find((x) => x.peerID === screenID);
           if (p) p.peer.close();
+
+          // Cập nhật Refs
           peersRef.current = peersRef.current.filter(
             (p) => p.peerID !== screenID
           );
+          // Cập nhật State (Quan trọng để UI render lại và mất khung đen)
           setPeers((prev) => prev.filter((p) => p.peerID !== screenID));
         });
       });
@@ -399,7 +462,6 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
     const peer = new RTCPeerConnection(stunServers);
     peer.iceQueue = [];
     stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-
     peer.onicecandidate = (e) => {
       if (e.candidate)
         socketRef.current.emit("sending_signal", {
@@ -410,13 +472,12 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
         });
     };
     peer.ontrack = (e) => {
-      if (!isScreen) {
+      if (!isScreen)
         setPeers((prev) =>
           prev.map((p) =>
             p.peerID === userToSignal ? { ...p, stream: e.streams[0] } : p
           )
         );
-      }
     };
     peer.onnegotiationneeded = async () => {
       const offer = await peer.createOffer();
@@ -436,7 +497,6 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
     peer.iceQueue = [];
     if (!isScreen)
       stream.getTracks().forEach((track) => peer.addTrack(track, stream));
-
     peer.onicecandidate = (e) => {
       if (e.candidate)
         socketRef.current.emit("returning_signal", {
@@ -458,38 +518,41 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
   };
 
   const handleSignal = async (peer, signal, callerID, isScreen) => {
-    if (signal.type === "sdp") {
-      if (signal.sdp.type === "answer") {
-        if (peer.signalingState === "stable") return;
+    try {
+      if (signal.type === "sdp") {
+        if (signal.sdp.type === "answer" && peer.signalingState === "stable")
+          return;
+        await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+        while (peer.iceQueue.length > 0)
+          await peer.addIceCandidate(
+            new RTCIceCandidate(peer.iceQueue.shift())
+          );
+        if (signal.sdp.type === "offer") {
+          const answer = await peer.createAnswer();
+          await peer.setLocalDescription(answer);
+          if (callerID)
+            socketRef.current.emit("returning_signal", {
+              signal: { type: "sdp", sdp: peer.localDescription },
+              callerID,
+              isScreen,
+            });
+        }
+      } else if (signal.type === "candidate") {
+        if (peer.remoteDescription)
+          await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
+        else peer.iceQueue.push(signal.candidate);
       }
-      await peer.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-      while (peer.iceQueue.length > 0)
-        await peer.addIceCandidate(new RTCIceCandidate(peer.iceQueue.shift()));
-      if (signal.sdp.type === "offer") {
-        const answer = await peer.createAnswer();
-        await peer.setLocalDescription(answer);
-        if (callerID)
-          socketRef.current.emit("returning_signal", {
-            signal: { type: "sdp", sdp: peer.localDescription },
-            callerID,
-            isScreen,
-          });
-      }
-    } else if (signal.type === "candidate") {
-      if (peer.remoteDescription)
-        await peer.addIceCandidate(new RTCIceCandidate(signal.candidate));
-      else peer.iceQueue.push(signal.candidate);
+    } catch (e) {
+      console.error("Signal Error:", e);
     }
   };
 
-  // --- FIX: TOGGLE MIC/CAM TRIỆT ĐỂ ---
   const toggleMic = () => {
     if (userStreamRef.current) {
       const newStatus = !isMicOn;
-      // Duyệt qua TẤT CẢ các track audio để tắt
-      userStreamRef.current.getAudioTracks().forEach((track) => {
-        track.enabled = newStatus;
-      });
+      userStreamRef.current
+        .getAudioTracks()
+        .forEach((t) => (t.enabled = newStatus));
       setIsMicOn(newStatus);
       socketRef.current.emit("media_status_change", {
         video: isCameraOn,
@@ -501,10 +564,9 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
   const toggleCam = () => {
     if (userStreamRef.current) {
       const newStatus = !isCameraOn;
-      // Duyệt qua TẤT CẢ các track video để tắt
-      userStreamRef.current.getVideoTracks().forEach((track) => {
-        track.enabled = newStatus;
-      });
+      userStreamRef.current
+        .getVideoTracks()
+        .forEach((t) => (t.enabled = newStatus));
       setIsCameraOn(newStatus);
       socketRef.current.emit("media_status_change", {
         video: newStatus,
@@ -513,12 +575,16 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
     }
   };
 
+  // --- FIX SHARE SCREEN CÓ TIẾNG & TẮT NHANH ---
   const handleScreenShare = async () => {
     if (!isScreenSharing) {
       try {
+        // Thêm { audio: true } để share cả tiếng hệ thống
         const stream = await navigator.mediaDevices.getDisplayMedia({
-          cursor: true,
+          video: { cursor: "always" },
+          audio: true,
         });
+
         setScreenStream(stream);
         screenStreamRef.current = stream;
         setIsScreenSharing(true);
@@ -540,13 +606,13 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
             });
           }
         });
+
+        // Sự kiện khi bấm nút "Stop Sharing" của trình duyệt
         stream.getVideoTracks()[0].onended = stopScreenShare;
       } catch (e) {
-        console.error(e);
+        console.error("Screen Share Error:", e);
       }
-    } else {
-      stopScreenShare();
-    }
+    } else stopScreenShare();
   };
 
   const stopScreenShare = () => {
@@ -556,11 +622,21 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
     screenStreamRef.current = null;
     setIsScreenSharing(false);
     setPinnedPeerID(null);
+
+    // Đóng kết nối gửi
     peersRef.current.forEach((p) => {
       if (p.isSender) p.peer.close();
     });
     peersRef.current = peersRef.current.filter((p) => !p.isSender);
+
+    // Báo server để xóa bên người nhận
     if (socketRef.current) socketRef.current.emit("stop_screen_share");
+  };
+
+  const handleLeaveBtn = () => {
+    leaveAndCleanup();
+    if (onLeave) onLeave();
+    else window.location.reload();
   };
 
   const displayList = useMemo(() => {
@@ -706,7 +782,7 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
           {isScreenSharing ? "❌ Stop Share" : "💻 Share"}
         </button>
         <button
-          onClick={onLeave}
+          onClick={handleLeaveBtn}
           className="bg-red-600 hover:bg-red-700 px-6 py-2 rounded-full font-bold ml-4 shadow-lg transition"
         >
           Rời lớp
