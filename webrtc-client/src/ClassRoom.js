@@ -312,7 +312,7 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
 
   const joinRoom = () => {
     if (socketRef.current) socketRef.current.disconnect();
-    socketRef.current = io.connect("http://localhost:3001");
+    socketRef.current = io.connect(process.env.REACT_APP_API_URL);
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })

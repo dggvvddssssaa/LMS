@@ -33,7 +33,9 @@ function App() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get("http://localhost:3001/api/courses");
+      const res = await axios.get(
+        `${process.env.REACT_APP_API_URL}/api/courses`
+      );
       setCourses(res.data);
     } catch (e) {
       console.error("Lỗi tải khóa học:", e);
@@ -50,7 +52,10 @@ function App() {
         ? { email, password, name, role: "STUDENT" }
         : { email, password };
 
-      const res = await axios.post(`http://localhost:3001${endpoint}`, payload);
+      const res = await axios.post(
+        `${process.env.REACT_APP_API_URL}${endpoint}`,
+        payload
+      );
 
       if (!isRegister) {
         localStorage.setItem("token", res.data.token);
@@ -84,7 +89,7 @@ function App() {
 
     try {
       await axios.post(
-        "http://localhost:3001/api/courses",
+        "${process.env.REACT_APP_API_URL}/api/courses",
         {
           title,
           description,
@@ -112,7 +117,7 @@ function App() {
   const viewCourseContent = async (courseId) => {
     try {
       const res = await axios.get(
-        `http://localhost:3001/api/courses/${courseId}`,
+        `${process.env.REACT_APP_API_URL}/api/courses/${courseId}`,
         {
           headers: { Authorization: `Bearer ${token}` },
         }

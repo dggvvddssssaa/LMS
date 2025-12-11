@@ -362,6 +362,6 @@ process.on("uncaughtException", (error) => {
 });
 
 const PORT = 3001;
-server.listen(PORT, () =>
+server.listen(PORT, "0.0.0.0", () =>
   console.log(`🚀 LMS Server + WebRTC running on port ${PORT}`)
 );
