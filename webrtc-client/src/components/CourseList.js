@@ -1,13 +1,25 @@
 import React from "react";
 
 const CourseList = ({ courses, onJoinCourse }) => {
-  if (!courses || courses.length === 0) {
+  // --- FIX LỖI MAP: KIỂM TRA DỮ LIỆU ĐẦU VÀO ---
+  // Nếu courses không tồn tại hoặc không phải là mảng -> Báo lỗi nhẹ, không crash app
+  if (!courses || !Array.isArray(courses)) {
+    console.error("Dữ liệu khóa học không hợp lệ:", courses);
+    return (
+      <div className="text-center text-gray-500 mt-10">
+        <p>Đang tải dữ liệu hoặc có lỗi kết nối...</p>
+      </div>
+    );
+  }
+
+  if (courses.length === 0) {
     return (
       <div className="text-center text-gray-500 mt-10">
         Chưa có khóa học nào.
       </div>
     );
   }
+  // ----------------------------------------------
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -16,7 +28,6 @@ const CourseList = ({ courses, onJoinCourse }) => {
           key={course.id}
           className="bg-white rounded-xl shadow-sm hover:shadow-md transition duration-300 overflow-hidden border border-gray-100 flex flex-col"
         >
-          {/* Thumbnail giả lập bằng CSS Gradient */}
           <div className="h-40 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center relative">
             <span className="text-white font-bold text-3xl opacity-30">
               COURSE
@@ -50,15 +61,15 @@ const CourseList = ({ courses, onJoinCourse }) => {
             </div>
 
             <p className="text-sm text-gray-500 mb-6 line-clamp-3 flex-1">
-              {course.description ||
-                "Mô tả khóa học ngắn gọn để học viên nắm bắt nội dung chính."}
+              {course.description || "Mô tả khóa học..."}
             </p>
 
+            {/* Sửa lại nút bấm để nhận ID chính xác */}
             <button
               onClick={() => onJoinCourse(course.id)}
               className="w-full bg-gray-900 hover:bg-blue-600 text-white py-3 rounded-lg font-bold transition-colors flex items-center justify-center gap-2"
             >
-              🚀 Vào Lớp Học
+              🚀 Xem Chi Tiết
             </button>
           </div>
         </div>
