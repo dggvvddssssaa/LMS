@@ -167,6 +167,7 @@ const Whiteboard = ({ socket }) => {
           <img
             src={slideImage}
             className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+            alt="Slide"
           />
         )}
         <canvas
@@ -312,14 +313,26 @@ const ClassRoom = ({ user, courseId, onLeave }) => {
 
   const joinRoom = () => {
     if (socketRef.current) socketRef.current.disconnect();
-    socketRef.current = io.connect(process.env.REACT_APP_API_URL);
+
+    // 1. Cấu hình API URL (Ưu tiên biến môi trường, fallback về link Ngrok)
+    const API_URL =
+      process.env.REACT_APP_API_URL ||
+      "https://adelaida-bifilar-nonrequisitely.ngrok-free.dev";
+
+    // 2. KẾT NỐI SOCKET VỚI HEADER ĐẶC BIỆT CỦA NGROK
+    socketRef.current = io(API_URL, {
+      extraHeaders: {
+        "ngrok-skip-browser-warning": "true", // <--- QUAN TRỌNG: Chìa khóa để xuyên qua Ngrok
+      },
+      transports: ["websocket", "polling"], // Đảm bảo độ ổn định
+    });
 
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
         if (!socketRef.current || !socketRef.current.connected) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
+          // Đôi khi socket chưa kịp connect, đợi sự kiện connect
+          // Nhưng ở đây ta cứ giữ stream
         }
 
         userStreamRef.current = stream;
