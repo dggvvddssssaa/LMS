@@ -1,10 +1,73 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import Layout from "./components/Layout";
-import CourseList from "./components/CourseList";
-import CourseManager from "./components/CourseManager"; // Import cái mới
-import ClassRoom from "./ClassRoom";
+import CourseManager from "./components/CourseManager"; // File quản lý khóa học
+import ClassRoom from "./ClassRoom"; // File WebRTC
 
+// --- COMPONENT COURSE LIST (Tích hợp luôn vào đây cho gọn) ---
+const CourseList = ({ courses, user, onManage, onEnroll }) => {
+  if (!courses || !Array.isArray(courses))
+    return <div className="text-center mt-10">Đang tải...</div>;
+  if (courses.length === 0)
+    return <div className="text-center mt-10">Chưa có khóa học nào.</div>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {courses.map((course) => (
+        <div
+          key={course.id}
+          className="bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col"
+        >
+          <div className="h-40 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center relative">
+            <span className="text-white font-bold text-3xl opacity-30">
+              COURSE
+            </span>
+          </div>
+          <div className="p-5 flex-1 flex flex-col">
+            <div className="flex justify-between items-start mb-2">
+              <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                General
+              </span>
+              <span className="text-sm font-bold text-green-600">
+                {course.price === 0 ? "FREE" : `$${course.price}`}
+              </span>
+            </div>
+            <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2">
+              {course.title}
+            </h3>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs">
+                {course.teacher?.name?.charAt(0) || "T"}
+              </div>
+              <span className="text-sm text-gray-500">
+                {course.teacher?.name || "Unknown"}
+              </span>
+            </div>
+
+            {/* Logic Nút Bấm */}
+            {user.role === "INSTRUCTOR" || user.role === "ADMIN" ? (
+              <button
+                onClick={() => onManage(course.id)}
+                className="w-full bg-gray-800 text-white py-2 rounded font-bold hover:bg-gray-700 transition"
+              >
+                ⚙️ Quản Lý
+              </button>
+            ) : (
+              <button
+                onClick={() => onEnroll(course.id)}
+                className="w-full bg-blue-600 text-white py-2 rounded font-bold hover:bg-blue-700 transition"
+              >
+                🚀 Đăng Ký / Vào Học
+              </button>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// --- APP COMPONENT ---
 function App() {
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(
@@ -13,17 +76,16 @@ function App() {
       : null
   );
 
-  // State điều hướng
-  const [view, setView] = useState("dashboard"); // dashboard | manager | live-room
+  const [view, setView] = useState("dashboard");
   const [courses, setCourses] = useState([]);
   const [activeCourseId, setActiveCourseId] = useState(null);
   const [liveRoomId, setLiveRoomId] = useState(null);
 
-  // State Auth
+  // Auth State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isRegister, setIsRegister] = useState(false);
   const [name, setName] = useState("");
+  const [isRegister, setIsRegister] = useState(false);
 
   useEffect(() => {
     if (token) fetchCourses();
@@ -31,12 +93,14 @@ function App() {
 
   const fetchCourses = async () => {
     try {
+      // SỬA LỖI: Thêm dấu $ để dùng biến môi trường
       const res = await axios.get(
         `${process.env.REACT_APP_API_URL}/api/courses`
       );
-      setCourses(res.data);
+      setCourses(Array.isArray(res.data) ? res.data : []);
     } catch (e) {
       console.error("Lỗi tải khóa học:", e);
+      if (e.response?.status === 401) handleLogout();
     }
   };
 
@@ -47,7 +111,6 @@ function App() {
       const payload = isRegister
         ? { email, password, name, role: "STUDENT" }
         : { email, password };
-
       const res = await axios.post(
         `${process.env.REACT_APP_API_URL}${endpoint}`,
         payload
@@ -74,8 +137,6 @@ function App() {
     setView("dashboard");
   };
 
-  // --- ACTIONS ---
-
   const createCourse = async () => {
     const title = prompt("Nhập tên khóa học mới:");
     if (!title) return;
@@ -100,7 +161,6 @@ function App() {
     }
   };
 
-  // Mua khóa học (Enroll)
   const enrollCourse = async (courseId) => {
     try {
       await axios.post(
@@ -113,23 +173,24 @@ function App() {
       alert("Đăng ký thành công! Bạn có thể vào học ngay.");
       openCourseManager(courseId);
     } catch (e) {
-      alert(e.response?.data?.error || "Lỗi đăng ký");
+      // Nếu đã đăng ký rồi (lỗi 400) thì vẫn cho vào học
+      if (e.response?.status === 400) {
+        openCourseManager(courseId);
+      } else {
+        alert(e.response?.data?.error || "Lỗi đăng ký");
+      }
     }
   };
 
-  // Mở trang quản lý/học tập
   const openCourseManager = (courseId) => {
     setActiveCourseId(courseId);
     setView("manager");
   };
 
-  // Vào phòng Live (Từ trang CourseManager)
   const joinLiveClass = (courseId) => {
     setLiveRoomId(courseId);
     setView("live-room");
   };
-
-  // --- RENDER ---
 
   if (!token) {
     return (
@@ -189,7 +250,6 @@ function App() {
 
   return (
     <Layout user={user} onLogout={handleLogout} onNavigate={setView}>
-      {/* MÀN HÌNH DASHBOARD */}
       {view === "dashboard" && (
         <>
           <div className="flex justify-between items-center mb-6">
@@ -205,64 +265,15 @@ function App() {
               </button>
             )}
           </div>
-
-          {/* COURSE LIST */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {courses.map((course) => (
-              <div
-                key={course.id}
-                className="bg-white rounded-xl shadow-sm hover:shadow-md transition overflow-hidden border border-gray-100 flex flex-col"
-              >
-                <div className="h-40 bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center relative">
-                  <span className="text-white font-bold text-3xl opacity-30">
-                    COURSE
-                  </span>
-                </div>
-                <div className="p-5 flex-1 flex flex-col">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
-                      General
-                    </span>
-                    <span className="text-sm font-bold text-green-600">
-                      {course.price === 0 ? "FREE" : `$${course.price}`}
-                    </span>
-                  </div>
-                  <h3 className="text-lg font-bold text-gray-800 mb-2 line-clamp-2">
-                    {course.title}
-                  </h3>
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="w-6 h-6 rounded-full bg-gray-300 flex items-center justify-center text-xs">
-                      {course.teacher?.name?.charAt(0) || "T"}
-                    </div>
-                    <span className="text-sm text-gray-500">
-                      {course.teacher?.name || "Unknown"}
-                    </span>
-                  </div>
-
-                  {/* Logic Nút Bấm */}
-                  {user.role === "INSTRUCTOR" || user.role === "ADMIN" ? (
-                    <button
-                      onClick={() => openCourseManager(course.id)}
-                      className="w-full bg-gray-800 text-white py-2 rounded font-bold"
-                    >
-                      ⚙️ Quản Lý
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => enrollCourse(course.id)}
-                      className="w-full bg-blue-600 text-white py-2 rounded font-bold"
-                    >
-                      🚀 Đăng Ký / Vào Học
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
+          <CourseList
+            courses={courses}
+            user={user}
+            onManage={openCourseManager}
+            onEnroll={enrollCourse}
+          />
         </>
       )}
 
-      {/* MÀN HÌNH QUẢN LÝ / HỌC TẬP */}
       {view === "manager" && activeCourseId && (
         <CourseManager
           courseId={activeCourseId}
