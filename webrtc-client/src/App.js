@@ -6,6 +6,7 @@ import CoursePlayer from "./components/CoursePlayer";
 import ClassRoom from "./ClassRoom"; // Component WebRTC
 
 function App() {
+  const API_URL = "https://adelaida-bifilar-nonrequisitely.ngrok-free.dev";
   // 1. Khởi tạo State từ LocalStorage
   const [token, setToken] = useState(localStorage.getItem("token"));
   const [user, setUser] = useState(
@@ -33,9 +34,7 @@ function App() {
 
   const fetchCourses = async () => {
     try {
-      const res = await axios.get(
-        `${process.env.REACT_APP_API_URL}/api/courses`
-      );
+      const res = await axios.get(API_URL + `/api/courses`);
       setCourses(res.data);
     } catch (e) {
       console.error("Lỗi tải khóa học:", e);
