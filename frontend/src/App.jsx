@@ -1,0 +1,107 @@
+import React from "react";
+import { Routes, Route, Link, Navigate, Outlet } from "react-router-dom";
+import Layout from "./components/Layout";
+import ProtectedRoute from "./components/ProtectedRoute";
+import Login from "./pages/auth/Login";
+import Register from "./pages/auth/Register";
+import Dashboard from "./pages/dashboard/Dashboard";
+import TeacherDashboard from "./pages/teacher/TeacherDashboard";
+import Classroom from "./components/Classroom";
+
+import CourseList from "./pages/course/CourseList";
+import CourseDetail from "./pages/course/CourseDetail";
+import TeacherCourseDetail from "./pages/teacher/TeacherCourseDetail";
+import SessionCreate from "./pages/session/SessionCreate";
+import LessonLearning from "./pages/course/LessonLearning";
+import CertificateView from "./pages/course/CertificateView";
+
+// Admin imports
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import UserManagement from "./pages/admin/UserManagement";
+import AdminLiveMonitor from "./pages/admin/AdminLiveMonitor";
+import AdminCourseList from "./pages/admin/AdminCourseList";
+import CourseEditor from "./pages/admin/CourseEditor";
+
+const Landing = () => (
+  <div className="p-20 text-center bg-white min-h-[60vh] flex flex-col justify-center items-center rounded-2xl shadow-sm border border-slate-100 mt-8 mx-4 lg:mx-auto max-w-5xl">
+    <h1 className="text-5xl md:text-6xl font-extrabold mb-6 text-slate-800 tracking-tight">
+      Chào Mừng Đến Với <span className="text-blue-600">LMSEdu</span>
+    </h1>
+    <p className="text-slate-500 text-xl max-w-3xl mx-auto leading-relaxed mb-8">
+      Nền tảng giáo dục trực tuyến tiên tiến tích hợp phòng học tương tác chất
+      lượng cao và các công cụ hỗ trợ giảng viên toàn diện. Học tập mọi lúc mọi
+      nơi với cộng đồng học viên năng động.
+    </p>
+    <div className="flex flex-col sm:flex-row gap-4 justify-center">
+      <Link
+        to="/courses"
+        className="bg-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg hover:shadow-xl"
+      >
+        Khám Phá Khóa Học
+      </Link>
+      <Link
+        to="/register"
+        className="border-2 border-blue-600 text-blue-600 px-8 py-4 rounded-xl font-bold text-lg hover:bg-blue-50 transition-all"
+      >
+        Tham Gia Ngay
+      </Link>
+    </div>
+  </div>
+);
+
+/** Wrapper that requires auth for nested routes */
+const AuthRequired = ({ roles }) => (
+  <ProtectedRoute roles={roles}>
+    <Outlet />
+  </ProtectedRoute>
+);
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Layout />}>
+        {/* Public routes */}
+        <Route index element={<Landing />} />
+        <Route path="login" element={<Login />} />
+        <Route path="register" element={<Register />} />
+        <Route path="courses" element={<CourseList />} />
+        <Route path="course/:id" element={<CourseDetail />} />
+
+        {/* Protected — any authenticated user */}
+        <Route element={<AuthRequired />}>
+          <Route path="dashboard" element={<Dashboard />} />
+          <Route path="session/create" element={<SessionCreate />} />
+        </Route>
+
+        {/* Protected — instructor/teacher only */}
+        <Route element={<AuthRequired roles={['instructor', 'teacher']} />}>
+          <Route path="teacher/dashboard" element={<TeacherDashboard />} />
+          <Route path="teacher/course/:id" element={<TeacherCourseDetail />} />
+        </Route>
+
+        {/* Protected — admin only (legacy routes) */}
+        <Route element={<AuthRequired roles={['admin']} />}>
+          <Route path="admin/dashboard" element={<AdminDashboard />} />
+          <Route path="admin/users" element={<UserManagement />} />
+          <Route path="admin/live-monitor" element={<AdminLiveMonitor />} />
+        </Route>
+      </Route>
+
+      {/* Admin with AdminLayout sidebar — admin only */}
+      <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminLayout /></ProtectedRoute>}>
+        <Route path="courses" element={<AdminCourseList />} />
+        <Route path="courses-editor" element={<Navigate to="/admin/courses" replace />} />
+        <Route path="courses/:id/editor" element={<CourseEditor />} />
+        <Route path="courses-editor/:id" element={<CourseEditor />} />
+      </Route>
+
+      {/* Fullscreen Routes — authenticated */}
+      <Route path="/session/:id/join" element={<ProtectedRoute><Classroom /></ProtectedRoute>} />
+      <Route path="/course/:id/learn" element={<ProtectedRoute><LessonLearning /></ProtectedRoute>} />
+      <Route path="/certificate/:id" element={<CertificateView />} />
+    </Routes>
+  );
+}
+
+export default App;

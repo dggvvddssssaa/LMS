@@ -1,0 +1,14 @@
+export { authService } from "./domains/authService";
+export { courseService } from "./domains/courseService";
+export { enrollmentService } from "./domains/enrollmentService";
+export { qaService } from "./domains/qaService";
+export { notificationService } from "./domains/notificationService";
+export { adminService } from "./domains/adminService";
+export { sessionService } from "./domains/sessionService";
+export { certificateService } from "./domains/certificateService";
+export { materialService } from "./domains/materialService";
+export { assignmentService } from "./domains/assignmentService";
+export { statsService } from "./domains/statsService";
+export { liveClassService } from "./domains/liveClassService";
+export { sectionService } from "./domains/sectionService";
+export { lessonService } from "./domains/lessonService";

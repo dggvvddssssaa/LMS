@@ -1,0 +1,346 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @db.VarChar(100)
+  email              String               @unique @db.VarChar(255)
+  password           String               @db.VarChar(255)
+  role               String?              @default("student") @db.VarChar(50)
+  is_verified        Boolean?             @default(false)
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  courses            Course[]             @relation("InstructorCourses")
+  enrollments        Enrollment[]
+  notifications      notifications[]
+  payments           Payment[]
+  reviews            reviews[]
+  session_attendance     session_attendance[]
+  assignment_submissions assignment_submissions[]
+
+  @@map("users")
+}
+
+model Enrollment {
+  id              Int               @id @default(autoincrement())
+  student_id      Int?
+  course_id       Int?
+  status          String?           @default("active") @db.VarChar(20)
+  progress        Decimal?          @default(0) @db.Decimal(5, 2)
+  created_at      DateTime?         @default(now()) @db.Timestamp(6)
+  enrolled_at     DateTime?         @default(now()) @db.Timestamp(6)
+  course          Course?           @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student         User?             @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  lesson_progress lesson_progress[]
+
+  @@unique([student_id, course_id])
+  @@map("enrollments")
+}
+
+model Payment {
+  id             Int       @id @default(autoincrement())
+  student_id     Int?
+  course_id      Int?
+  amount         Decimal   @db.Decimal(10, 2)
+  status         String?   @default("pending") @db.VarChar(20)
+  payment_method String?   @db.VarChar(50)
+  created_at     DateTime? @default(now()) @db.Timestamp(6)
+  transaction_id String?   @unique @db.VarChar(100)
+  updated_at     DateTime? @default(now()) @db.Timestamp(6)
+  course         Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student        User?     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("payments")
+}
+
+model Course {
+  id                     Int            @id @default(autoincrement())
+  title                  String         @db.VarChar(255)
+  description            String?
+  instructor_id          Int?
+  thumbnail              String?
+  type                   String?        @default("recorded") @db.VarChar(20)
+  price                  Decimal?       @default(0) @db.Decimal(10, 2)
+  is_published           Boolean?       @default(false)
+  created_at             DateTime?      @default(now()) @db.Timestamp(6)
+  updated_at             DateTime       @default(now()) @updatedAt @db.Timestamp(6)
+  level                  String?        @default("beginner") @db.VarChar(20)
+  live_link              String?
+  schedule_time          DateTime?      @db.Timestamp(6)
+  status                 String?        @default("draft") @db.VarChar(20)
+  sale_price             Decimal?       @default(0.00) @db.Decimal(10, 2)
+  duration_total_minutes Int?           @default(0)
+  video_count            Int?           @default(0)
+  what_you_will_learn    String[]
+  instructor             User?          @relation("InstructorCourses", fields: [instructor_id], references: [id], onUpdate: NoAction)
+  enrollments            Enrollment[]
+  live_classes           live_classes[]
+  payments               Payment[]
+  reviews                reviews[]
+  sections               Section[]
+  assignments            assignments[]
+
+  @@map("courses")
+}
+
+model Section {
+  id          Int       @id @default(autoincrement())
+  course_id   Int?
+  title       String    @db.VarChar(255)
+  order_index Int?      @default(0)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  lessons     Lesson[]
+  course      Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("sections")
+}
+
+model Lesson {
+  id              Int       @id @default(autoincrement())
+  chapter_id      Int
+  title           String    @db.VarChar(255)
+  video_url       String?   @db.VarChar(255)
+  video_status    String?   @default("ready") @db.VarChar(50)
+  duration        Int?      @default(0)
+  position        Int       @default(0)
+  is_free_preview Boolean?  @default(false)
+  created_at      DateTime? @default(now()) @db.Timestamp(6)
+  section_id      Int?
+  content_type    String?   @default("video") @db.VarChar(20)
+  content_url     String?
+  content_text    String?
+  order_index     Int?      @default(0)
+  description     String?
+  section         Section?  @relation(fields: [section_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  assignments     assignments[]
+
+  @@map("lessons")
+}
+
+model lesson_progress {
+  id            Int         @id @default(autoincrement())
+  enrollment_id Int?
+  lesson_id     Int?
+  is_completed  Boolean?    @default(false)
+  last_position Int?        @default(0)
+  updated_at    DateTime?   @default(now()) @db.Timestamp(6)
+  enrollments   Enrollment? @relation(fields: [enrollment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([enrollment_id, lesson_id])
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model live_classes {
+  id              Int        @id @default(autoincrement())
+  course_id       Int?
+  schedule_config Json?
+  total_sessions  Int?       @default(0)
+  max_students    Int?       @default(0)
+  status          String?    @default("upcoming") @db.VarChar(20)
+  created_at      DateTime?  @default(now()) @db.Timestamp(6)
+  start_time      DateTime?  @db.Timestamp(6)
+  end_time        DateTime?  @db.Timestamp(6)
+  courses         Course?    @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sessions        sessions[]
+}
+
+model materials {
+  id         Int       @id @default(autoincrement())
+  session_id Int?
+  title      String    @db.VarChar(255)
+  file_url   String
+  type       String?   @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  sessions   sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+model notifications {
+  id         Int       @id @default(autoincrement())
+  user_id    Int?
+  message    String
+  is_read    Boolean?  @default(false)
+  type       String?   @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  users      User?     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model reviews {
+  id         Int       @id @default(autoincrement())
+  course_id  Int?
+  student_id Int?
+  rating     Int?
+  comment    String?
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  courses    Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      User?     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([course_id, student_id])
+}
+
+model session_attendance {
+  id         Int       @id @default(autoincrement())
+  session_id Int?
+  student_id Int?
+  joined_at  DateTime? @default(now()) @db.Timestamp(6)
+  left_at    DateTime? @db.Timestamp(6)
+  sessions   sessions? @relation(fields: [session_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  users      User?     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model sessions {
+  id                 Int                  @id @default(autoincrement())
+  live_class_id      Int?
+  title              String               @db.VarChar(255)
+  start_time         DateTime             @db.Timestamp(6)
+  end_time           DateTime?            @db.Timestamp(6)
+  meeting_link       String?
+  meeting_id         String?              @db.VarChar(100)
+  notes              String?
+  status             String?              @default("scheduled") @db.VarChar(20)
+  created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  materials          materials[]
+  session_attendance session_attendance[]
+  live_classes       live_classes?        @relation(fields: [live_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  assignments        assignments[]
+}
+
+model assignments {
+  id          Int       @id @default(autoincrement())
+  course_id   Int?
+  session_id  Int?
+  lesson_id   Int?
+  title       String    @db.VarChar(255)
+  description String?
+  deadline    DateTime? @db.Timestamp(6)
+  kind        String?   @default("mcq") @db.VarChar(50)
+  payload     Json?
+  score_max   Int?      @default(100)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  courses     Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  sessions    sessions? @relation(fields: [session_id], references: [id], onUpdate: NoAction)
+  lessons     Lesson?   @relation(fields: [lesson_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  submissions assignment_submissions[]
+}
+
+model assignment_submissions {
+  id            Int          @id @default(autoincrement())
+  assignment_id Int?
+  student_id    Int?
+  answers       Json?
+  score         Int?         @default(0)
+  status        String?      @default("submitted") @db.VarChar(50)
+  created_at    DateTime?    @default(now()) @db.Timestamp(6)
+  assignment    assignments? @relation(fields: [assignment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  student       User?        @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  
+  @@unique([assignment_id, student_id])
+}
+
+model categories {
+  id         Int       @id @default(autoincrement())
+  name       String    @db.VarChar(255)
+  slug       String    @unique @db.VarChar(255)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model certificates {
+  id              Int       @id @default(autoincrement())
+  enrollment_id   Int?      @unique
+  user_id         Int?
+  course_id       Int?
+  certificate_url String?
+  issued_at       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model chapters {
+  id         Int       @id @default(autoincrement())
+  course_id  Int
+  title      String    @db.VarChar(255)
+  position   Int       @default(0)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model classes {
+  id               Int       @id @default(autoincrement())
+  course_id        Int
+  teacher_id       Int
+  start_time       DateTime  @db.Timestamp(6)
+  duration_minutes Int
+  status           String?   @default("upcoming") @db.VarChar(50)
+  created_at       DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model course_answers {
+  id          Int       @id @default(autoincrement())
+  question_id Int?
+  user_id     Int?
+  content     String
+  is_accepted Boolean?  @default(false)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model course_categories {
+  course_id   Int
+  category_id Int
+
+  @@id([course_id, category_id])
+}
+
+model course_materials {
+  id         Int       @id @default(autoincrement())
+  course_id  Int?
+  title      String    @db.VarChar(255)
+  file_url   String
+  file_type  String?   @default("document") @db.VarChar(50)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model course_questions {
+  id         Int       @id @default(autoincrement())
+  course_id  Int?
+  lesson_id  Int?
+  user_id    Int?
+  title      String    @db.VarChar(255)
+  content    String
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+  updated_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model global_settings {
+  key   String @id @db.VarChar(255)
+  value Json?
+}
+
+model messages {
+  id         Int       @id @default(autoincrement())
+  room_id    Int
+  user_id    Int
+  content    String
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model progress_tracking {
+  id                  Int       @id @default(autoincrement())
+  user_id             Int
+  lesson_id           Int
+  is_completed        Boolean?  @default(false)
+  last_watched_second Int?      @default(0)
+  updated_at          DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model rooms {
+  id         Int       @id @default(autoincrement())
+  class_id   Int
+  room_uuid  String    @unique @db.VarChar(255)
+  is_active  Boolean?  @default(false)
+  created_at DateTime? @default(now()) @db.Timestamp(6)
+}

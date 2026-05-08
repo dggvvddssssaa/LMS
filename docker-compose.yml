@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: lms_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-lms_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Cache & PubSub
+  redis:
+    image: redis:7-alpine
+    container_name: lms_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # TURN/STUN Server
+  coturn:
+    image: coturn/coturn
+    container_name: lms_coturn
+    restart: always
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "5349:5349/udp"
+      - "49152-65535:49152-65535/udp"
+    environment:
+      - TURNSERVER_REALM=localhost
+    command:
+      - -n
+      - --log-file=stdout
+      - --min-port=49152
+      - --max-port=65535
+
+  # Backend API + Socket + Mediasoup
+  backend:
+    build: ./backend
+    container_name: lms_backend
+    restart: always
+    ports:
+      - "4000:4000" # API + Socket
+      - "2000-2020:2000-2020/udp" # Mediasoup workers
+      - "2000-2020:2000-2020/tcp"
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=4000
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-changeme}@postgres:5432/${POSTGRES_DB:-lms_db}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET:?JWT_SECRET must be set}
+      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:5173}
+      - MEDIASOUP_MIN_PORT=2000
+      - MEDIASOUP_MAX_PORT=2020
+      - MEDIASOUP_LISTEN_IP=0.0.0.0
+      - MEDIASOUP_ANNOUNCED_IP=${MEDIASOUP_ANNOUNCED_IP:-127.0.0.1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:4000/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # Frontend React
+  frontend:
+    build: ./frontend
+    container_name: lms_frontend
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=${VITE_API_URL:-http://localhost:4000}
+    volumes:
+      - ./frontend/src:/app/src
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:

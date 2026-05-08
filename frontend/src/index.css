@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading text-neutral;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-md hover:shadow-lg transform hover:scale-105;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-blue-600 border-2 border-blue-600 px-6 py-3 rounded-xl font-bold hover:bg-blue-50 transition-all;
+  }
+
+  .card-education {
+    @apply bg-white rounded-2xl shadow-sm border border-slate-100 hover:shadow-lg transition-all duration-300;
+  }
+
+  .text-education {
+    @apply text-slate-700 leading-relaxed;
+  }
+
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-in-out;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight 0.25s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(40px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slideInRight {
+    from { transform: translateX(100%); }
+    to { transform: translateX(0); }
+  }
+}
