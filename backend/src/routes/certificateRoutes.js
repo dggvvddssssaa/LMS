@@ -12,6 +12,9 @@ router.post('/generate/:courseId', verifyToken, certificateController.generateCe
 // Student: get certificate for a specific course
 router.get('/course/:courseId', verifyToken, certificateController.getCertificateByCourse);
 
+// Public: verify certificate by code
+router.get('/verify/:code', certificateController.verifyCertificate);
+
 // Public: view certificate by ID (for sharing)
 router.get('/:id', certificateController.getCertificateById);
 

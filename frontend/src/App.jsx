@@ -22,6 +22,8 @@ import UserManagement from "./pages/admin/UserManagement";
 import AdminLiveMonitor from "./pages/admin/AdminLiveMonitor";
 import AdminCourseList from "./pages/admin/AdminCourseList";
 import CourseEditor from "./pages/admin/CourseEditor";
+import AdminCertificateTemplates from "./pages/admin/AdminCertificateTemplates";
+import AdminCertificateTemplateEditor from "./pages/admin/AdminCertificateTemplateEditor";
 
 const Landing = () => (
   <div className="p-20 text-center bg-white min-h-[60vh] flex flex-col justify-center items-center rounded-2xl shadow-sm border border-slate-100 mt-8 mx-4 lg:mx-auto max-w-5xl">
@@ -80,20 +82,19 @@ function App() {
           <Route path="teacher/course/:id" element={<TeacherCourseDetail />} />
         </Route>
 
-        {/* Protected — admin only (legacy routes) */}
+        {/* Protected — admin only */}
         <Route element={<AuthRequired roles={['admin']} />}>
+          <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="admin/dashboard" element={<AdminDashboard />} />
           <Route path="admin/users" element={<UserManagement />} />
           <Route path="admin/live-monitor" element={<AdminLiveMonitor />} />
+          <Route path="admin/courses" element={<AdminCourseList />} />
+          <Route path="admin/certificate-templates" element={<AdminCertificateTemplates />} />
+          <Route path="admin/certificate-templates/:id/editor" element={<AdminCertificateTemplateEditor />} />
+          <Route path="admin/courses-editor" element={<Navigate to="/admin/courses" replace />} />
+          <Route path="admin/courses/:id/editor" element={<CourseEditor />} />
+          <Route path="admin/courses-editor/:id" element={<CourseEditor />} />
         </Route>
-      </Route>
-
-      {/* Admin with AdminLayout sidebar — admin only */}
-      <Route path="/admin" element={<ProtectedRoute roles={['admin']}><AdminLayout /></ProtectedRoute>}>
-        <Route path="courses" element={<AdminCourseList />} />
-        <Route path="courses-editor" element={<Navigate to="/admin/courses" replace />} />
-        <Route path="courses/:id/editor" element={<CourseEditor />} />
-        <Route path="courses-editor/:id" element={<CourseEditor />} />
       </Route>
 
       {/* Fullscreen Routes — authenticated */}

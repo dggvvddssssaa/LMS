@@ -6,6 +6,9 @@ const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 // Get assignments for a lesson
 router.get('/lesson/:lessonId', verifyToken, assignmentController.getAssignmentsByLesson);
 
+// Get final assignment for a course
+router.get('/course/:courseId/final', verifyToken, assignmentController.getFinalAssignment);
+
 // Admin / Instructor routes
 router.post('/', verifyToken, requireRole('admin', 'instructor'), assignmentController.createAssignment);
 router.put('/:id', verifyToken, requireRole('admin', 'instructor'), assignmentController.updateAssignment);

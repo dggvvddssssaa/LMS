@@ -49,6 +49,7 @@ const TeacherCourseDetail = () => {
 
   useEffect(() => {
     fetchCourseData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   const handleAddSection = async (e) => {
@@ -243,7 +244,7 @@ const TeacherCourseDetail = () => {
                     </div>
                   </form>
                 ) : (
-                  <button onClick={() => setAddingLessonToSection(section.id)} className="w-full text-left p-3 text-blue-600 hover:bg-blue-50 rounded-xl text-sm font-bold border border-dashed border-blue-200">+ Thêm bài giảng vào "{section.title}"</button>
+                  <button onClick={() => setAddingLessonToSection(section.id)} className="w-full text-left p-3 text-blue-600 hover:bg-blue-50 rounded-xl text-sm font-bold border border-dashed border-blue-200">+ Thêm bài giảng vào &ldquo;{section.title}&rdquo;</button>
                 )}
               </div>
             </div>

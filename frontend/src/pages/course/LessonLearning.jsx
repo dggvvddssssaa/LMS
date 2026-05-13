@@ -83,6 +83,7 @@ const LessonLearning = () => {
         setActiveLesson(firstSection.lessons[0]);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [course, sessions]);
 
   useEffect(() => {
@@ -144,19 +145,90 @@ const LessonLearning = () => {
 
   const renderContent = () => {
     if ((course?.type === "live" || course?.type === "hybrid") && activeSession) {
+      const status = activeSession.status || 'scheduled';
+      const startTime = new Date(activeSession.start_time);
+      const now = new Date();
+      const minutesUntilStart = Math.max(0, Math.floor((startTime - now) / 1000 / 60));
+      const hoursUntilStart = Math.floor(minutesUntilStart / 60);
+      const minsRemainder = minutesUntilStart % 60;
+      const joinOpenMinutes = activeSession.join_open_minutes || 15;
+      const canJoinEarly = minutesUntilStart <= joinOpenMinutes;
+
+      if (status === 'ended') {
+        return (
+          <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-100 rounded-2xl border border-slate-200">
+            <div className="w-20 h-20 bg-slate-200 text-slate-400 rounded-full flex items-center justify-center text-4xl mb-6">✅</div>
+            <h2 className="text-2xl font-black mb-2 text-slate-700 text-center">{activeSession.title}</h2>
+            <p className="text-slate-500 mb-4">Buổi học này đã kết thúc</p>
+            {activeSession.recording_url && (
+              <a href={activeSession.recording_url} target="_blank" rel="noreferrer"
+                className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition">
+                📹 Xem lại bản ghi
+              </a>
+            )}
+          </div>
+        );
+      }
+
+      if (status === 'open' || status === 'ongoing') {
+        return (
+          <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-900 rounded-2xl border border-green-500/30 text-white">
+            <div className="w-20 h-20 bg-green-500/20 text-green-400 rounded-full flex items-center justify-center text-4xl mb-6 animate-pulse">🟢</div>
+            <h2 className="text-3xl font-black mb-2 text-center">{activeSession.title}</h2>
+            <p className="text-green-300 font-bold mb-2">{status === 'ongoing' ? 'Đang diễn ra' : 'Phòng đã mở'}</p>
+            <div className="flex items-center gap-2 text-slate-300 mb-8">
+              <span className="bg-slate-800 px-3 py-1 rounded-lg text-sm font-bold border border-slate-700">
+                Bắt đầu: {startTime.toLocaleString('vi-VN')}
+              </span>
+            </div>
+            <button
+              onClick={() => navigate(`/session/${activeSession.meeting_id}/join`)}
+              className="px-8 py-4 bg-green-600 rounded-2xl font-bold hover:bg-green-500 transition-all shadow-lg shadow-green-500/30 flex items-center gap-3 text-lg"
+            >
+              <span>👉</span> Tham Gia Ngay
+            </button>
+          </div>
+        );
+      }
+
+      // status === 'scheduled'
       return (
         <div className="h-full flex flex-col items-center justify-center p-8 bg-slate-900 rounded-2xl border border-slate-800 text-white">
           <div className="w-20 h-20 bg-blue-500/20 text-blue-400 rounded-full flex items-center justify-center text-4xl mb-6">🎥</div>
           <h2 className="text-3xl font-black mb-2 text-center">{activeSession.title}</h2>
-          <div className="flex items-center gap-2 text-slate-300 mb-8">
-            <span className="bg-slate-800 px-3 py-1 rounded-lg text-sm font-bold border border-slate-700">Bắt đầu: {new Date(activeSession.start_time).toLocaleString('vi-VN')}</span>
+          <div className="flex items-center gap-2 text-slate-300 mb-4">
+            <span className="bg-slate-800 px-3 py-1 rounded-lg text-sm font-bold border border-slate-700">
+              Bắt đầu: {startTime.toLocaleString('vi-VN')}
+            </span>
           </div>
-          <button
-            onClick={() => navigate(`/session/${activeSession.meeting_id}/join`)}
-            className="px-8 py-4 bg-blue-600 rounded-2xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/30 flex items-center gap-3 text-lg"
-          >
-            <span>👉</span> Tham Gia Lớp Học
-          </button>
+          {minutesUntilStart > 0 && (
+            <div className="text-center mb-6">
+              <p className="text-slate-400 text-sm mb-2">Còn</p>
+              <div className="flex items-center gap-2 justify-center">
+                {hoursUntilStart > 0 && (
+                  <span className="bg-blue-600/20 text-blue-300 px-4 py-2 rounded-xl font-black text-2xl border border-blue-500/30">
+                    {hoursUntilStart}h
+                  </span>
+                )}
+                <span className="bg-blue-600/20 text-blue-300 px-4 py-2 rounded-xl font-black text-2xl border border-blue-500/30">
+                  {minsRemainder}m
+                </span>
+              </div>
+              <p className="text-slate-500 text-xs mt-2">Có thể vào trước {joinOpenMinutes} phút</p>
+            </div>
+          )}
+          {canJoinEarly ? (
+            <button
+              onClick={() => navigate(`/session/${activeSession.meeting_id}/join`)}
+              className="px-8 py-4 bg-blue-600 rounded-2xl font-bold hover:bg-blue-500 transition-all shadow-lg shadow-blue-500/30 flex items-center gap-3 text-lg"
+            >
+              <span>👉</span> Tham Gia Lớp Học
+            </button>
+          ) : (
+            <div className="px-8 py-4 bg-slate-800 rounded-2xl font-bold text-slate-400 border border-slate-700 text-center">
+              ⏳ Phòng chưa mở
+            </div>
+          )}
         </div>
       );
     }
@@ -272,7 +344,7 @@ const LessonLearning = () => {
 
           <aside className="bg-white rounded-2xl border border-slate-200 overflow-hidden h-fit flex flex-col max-h-[80vh]">
             {/* Certificate Banner */}
-            {user?.role === 'student' && progressPercent >= 100 && (
+            {user?.role === 'student' && course?.certificate_enabled && progressPercent >= 100 && (
               <div className="p-4 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-amber-100">
                 {certificateData ? (
                   <Link
@@ -385,8 +457,13 @@ const LessonLearning = () => {
                             <div>
                               <h4 className={`font-semibold text-sm ${isActive ? 'text-blue-800' : 'text-slate-800'}`}>{session.title}</h4>
                               <p className="text-xs text-slate-500 mt-1">{new Date(session.start_time).toLocaleString('vi-VN')}</p>
-                              <span className="inline-block mt-1 px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 text-[10px] font-bold">
-                                {session.status === 'scheduled' ? 'Sắp diễn ra' : session.status === 'ongoing' ? 'Đang diễn ra' : 'Đã kết thúc'}
+                              <span className={`inline-block mt-1 px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                session.status === 'ongoing' ? 'bg-green-100 text-green-700' :
+                                session.status === 'open' ? 'bg-blue-100 text-blue-700' :
+                                session.status === 'ended' ? 'bg-slate-100 text-slate-500' :
+                                'bg-amber-100 text-amber-700'
+                              }`}>
+                                {session.status === 'scheduled' ? 'Sắp diễn ra' : session.status === 'open' ? 'Đã mở phòng' : session.status === 'ongoing' ? 'Đang diễn ra' : 'Đã kết thúc'}
                               </span>
                             </div>
                           </button>

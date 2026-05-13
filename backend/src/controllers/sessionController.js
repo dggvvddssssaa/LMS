@@ -27,6 +27,24 @@ exports.getActiveSessions = async (req, res) => {
   }
 };
 
+exports.getToday = async (req, res) => {
+  try {
+    const sessions = await SessionService.getToday();
+    res.status(200).json({ success: true, data: sessions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getMyTeaching = async (req, res) => {
+  try {
+    const sessions = await SessionService.getMyTeaching(req.user.id);
+    res.status(200).json({ success: true, data: sessions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.updateSession = async (req, res) => {
   try {
     const session = await SessionService.updateSession(req.params.id, req.body);
@@ -34,6 +52,24 @@ exports.updateSession = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Session not found' });
     }
     res.status(200).json({ success: true, message: 'Session updated', data: session });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.openSession = async (req, res) => {
+  try {
+    const session = await SessionService.openSession(req.params.id, req.user);
+    res.status(200).json({ success: true, message: 'Lớp đã được mở', data: session });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.endSession = async (req, res) => {
+  try {
+    const session = await SessionService.endSession(req.params.id, req.user);
+    res.status(200).json({ success: true, message: 'Lớp đã kết thúc', data: session });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

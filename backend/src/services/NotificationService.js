@@ -36,13 +36,28 @@ class NotificationService {
   }
 
   // System utility to create notifications
-  async createNotification(userId, message, type) {
+  async createNotification(userId, message, type, link) {
     const { rows } = await db.query(
-      `INSERT INTO notifications (user_id, message, type) 
-       VALUES ($1, $2, $3) RETURNING *`,
-      [userId, message, type]
+      `INSERT INTO notifications (user_id, message, type, link) 
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [userId, message, type || null, link || null]
     );
     return rows[0];
+  }
+
+  // Batch notify all enrolled students of a course
+  async notifyEnrolledStudents(courseId, message, type, link) {
+    const enrollRes = await db.query(
+      "SELECT student_id FROM enrollments WHERE course_id = $1 AND status = 'active'",
+      [courseId]
+    );
+
+    const results = [];
+    for (const row of enrollRes.rows) {
+      const notif = await this.createNotification(row.student_id, message, type, link);
+      results.push(notif);
+    }
+    return results;
   }
 }
 

@@ -22,6 +22,7 @@ model User {
   reviews            reviews[]
   session_attendance     session_attendance[]
   assignment_submissions assignment_submissions[]
+  teaching_sessions      sessions[]           @relation("SessionTeacher")
 
   @@map("users")
 }
@@ -77,6 +78,20 @@ model Course {
   duration_total_minutes Int?           @default(0)
   video_count            Int?           @default(0)
   what_you_will_learn    String[]
+  slug                   String?        @unique @db.VarChar(255)
+  short_description      String?
+  full_description       String?
+  promo_video_url        String?
+  language                        String?        @default("vi") @db.VarChar(50)
+  certificate_enabled             Boolean?       @default(false)
+  certificate_template_id         Int?
+  certificate_auto_issue          Boolean?       @default(false)
+  certificate_min_progress        Int?           @default(100)
+  certificate_requires_final_assignment Boolean? @default(false)
+  certificate_pass_percent        Int?           @default(80)
+  final_assignment_required       Boolean?       @default(false)
+  final_assignment_pass_percent   Int?           @default(80)
+  tags                            String[]
   instructor             User?          @relation("InstructorCourses", fields: [instructor_id], references: [id], onUpdate: NoAction)
   enrollments            Enrollment[]
   live_classes           live_classes[]
@@ -102,7 +117,7 @@ model Section {
 
 model Lesson {
   id              Int       @id @default(autoincrement())
-  chapter_id      Int
+  chapter_id      Int?
   title           String    @db.VarChar(255)
   video_url       String?   @db.VarChar(255)
   video_status    String?   @default("ready") @db.VarChar(50)
@@ -165,6 +180,7 @@ model notifications {
   message    String
   is_read    Boolean?  @default(false)
   type       String?   @db.VarChar(50)
+  link       String?
   created_at DateTime? @default(now()) @db.Timestamp(6)
   users      User?     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 }
@@ -197,14 +213,20 @@ model session_attendance {
 model sessions {
   id                 Int                  @id @default(autoincrement())
   live_class_id      Int?
+  teacher_id         Int?
   title              String               @db.VarChar(255)
   start_time         DateTime             @db.Timestamp(6)
   end_time           DateTime?            @db.Timestamp(6)
+  opened_at          DateTime?            @db.Timestamp(6)
+  closed_at          DateTime?            @db.Timestamp(6)
+  join_open_minutes  Int?                 @default(15)
+  recording_url      String?
   meeting_link       String?
   meeting_id         String?              @db.VarChar(100)
   notes              String?
   status             String?              @default("scheduled") @db.VarChar(20)
   created_at         DateTime?            @default(now()) @db.Timestamp(6)
+  teacher            User?                @relation("SessionTeacher", fields: [teacher_id], references: [id], onUpdate: NoAction)
   materials          materials[]
   session_attendance session_attendance[]
   live_classes       live_classes?        @relation(fields: [live_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
@@ -219,9 +241,11 @@ model assignments {
   title       String    @db.VarChar(255)
   description String?
   deadline    DateTime? @db.Timestamp(6)
-  kind        String?   @default("mcq") @db.VarChar(50)
-  payload     Json?
-  score_max   Int?      @default(100)
+  kind             String?   @default("mcq") @db.VarChar(50)
+  assignment_scope String?   @default("lesson") @db.VarChar(50)
+  payload          Json?
+  score_max        Int?      @default(100)
+  pass_percent     Int?      @default(80)
   created_at  DateTime? @default(now()) @db.Timestamp(6)
   courses     Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   sessions    sessions? @relation(fields: [session_id], references: [id], onUpdate: NoAction)
@@ -251,12 +275,43 @@ model categories {
 }
 
 model certificates {
-  id              Int       @id @default(autoincrement())
-  enrollment_id   Int?      @unique
-  user_id         Int?
-  course_id       Int?
-  certificate_url String?
-  issued_at       DateTime? @default(now()) @db.Timestamp(6)
+  id                         Int       @id @default(autoincrement())
+  certificate_code           String?   @unique @db.VarChar(100)
+  enrollment_id              Int?      @unique
+  user_id                    Int?
+  course_id                  Int?
+  template_id                Int?
+  student_name_snapshot      String?   @db.VarChar(255)
+  student_email_snapshot     String?   @db.VarChar(255)
+  course_title_snapshot      String?   @db.VarChar(255)
+  instructor_name_snapshot   String?   @db.VarChar(255)
+  issued_date_text           String?   @db.VarChar(100)
+  certificate_url            String?
+  verify_url                 String?
+  pdf_url                    String?
+  status                     String?   @default("issued") @db.VarChar(20)
+  metadata_json              Json?
+  issued_at                  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at                 DateTime? @default(now()) @updatedAt @db.Timestamp(6)
+}
+
+model certificate_templates {
+  id                    Int       @id @default(autoincrement())
+  name                  String    @db.VarChar(255)
+  type                  String?   @default("completion") @db.VarChar(50)
+  status                String?   @default("draft") @db.VarChar(20)
+  layout_json           Json?
+  background_url        String?
+  logo_url              String?
+  seal_url              String?
+  signature_url         String?
+  issuer_name           String?   @db.VarChar(255)
+  issuer_title          String?   @db.VarChar(255)
+  representative_name   String?   @db.VarChar(255)
+  representative_title  String?   @db.VarChar(255)
+  created_by            Int?
+  created_at            DateTime? @default(now()) @db.Timestamp(6)
+  updated_at            DateTime? @default(now()) @updatedAt @db.Timestamp(6)
 }
 
 model chapters {

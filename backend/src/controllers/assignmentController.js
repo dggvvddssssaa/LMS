@@ -45,7 +45,7 @@ exports.deleteAssignment = async (req, res) => {
 
 exports.submitAssignment = async (req, res) => {
   try {
-    const studentId = req.user.userId; // Ensure verifyToken middleware is used
+    const studentId = req.user.id; // Ensure verifyToken middleware is used
     const assignmentId = req.params.id;
     const { answers } = req.body;
     
@@ -81,7 +81,14 @@ exports.submitAssignment = async (req, res) => {
       status
     });
     
-    res.status(200).json({ success: true, data: submission });
+    let certificate = null;
+    if (assignment.assignment_scope === 'final' && assignment.course_id) {
+       const ProgressService = require('../services/ProgressService');
+       const progress = await ProgressService.getCourseProgress(studentId, assignment.course_id);
+       certificate = await ProgressService.checkAndIssueCertificate(studentId, assignment.course_id, progress.enrollmentId, progress.overallProgress);
+    }
+    
+    res.status(200).json({ success: true, data: { ...submission, certificate } });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }
@@ -89,11 +96,21 @@ exports.submitAssignment = async (req, res) => {
 
 exports.getSubmission = async (req, res) => {
   try {
-    const studentId = req.user.userId;
+    const studentId = req.user.id;
     const assignmentId = req.params.id;
     
     const submission = await AssignmentRepository.getSubmission(assignmentId, studentId);
     res.status(200).json({ success: true, data: submission });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.getFinalAssignment = async (req, res) => {
+  try {
+    const { courseId } = req.params;
+    const assignment = await AssignmentRepository.getByCourseFinal(courseId);
+    res.status(200).json({ success: true, data: assignment });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

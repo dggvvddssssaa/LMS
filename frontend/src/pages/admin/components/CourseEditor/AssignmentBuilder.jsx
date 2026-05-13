@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import httpClient from '../../../../services/core/httpClient';
 import { useToast } from '../../../../contexts/ToastContext';
 
-export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
+export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose }) {
   const { pushToast } = useToast();
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -13,6 +13,7 @@ export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
   const [description, setDescription] = useState('');
   const [kind, setKind] = useState('mcq'); // 'mcq' or 'essay'
   const [scoreMax, setScoreMax] = useState(100);
+  const [deadline, setDeadline] = useState('');
   
   // MCQ specific payload
   const [questions, setQuestions] = useState([
@@ -24,18 +25,25 @@ export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
 
   useEffect(() => {
     fetchAssignment();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId]);
 
   const fetchAssignment = async () => {
     try {
-      const res = await httpClient.get(`/assignments/lesson/${lessonId}`);
-      if (res.data.success && res.data.data.length > 0) {
-        const existing = res.data.data[0];
+      const url = isFinal 
+        ? `/assignments/course/${courseId}/final`
+        : `/assignments/lesson/${lessonId}`;
+      const res = await httpClient.get(url);
+      
+      const existing = isFinal ? res.data?.data : (res.data?.data && res.data.data.length > 0 ? res.data.data[0] : null);
+      
+      if (existing) {
         setAssignment(existing);
         setTitle(existing.title || '');
         setDescription(existing.description || '');
         setKind(existing.kind || 'mcq');
         setScoreMax(existing.score_max || 100);
+        setDeadline(existing.deadline ? new Date(existing.deadline).toISOString().slice(0, 16) : '');
         
         if (existing.kind === 'mcq' && existing.payload?.questions) {
           setQuestions(existing.payload.questions);
@@ -79,13 +87,15 @@ export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
         : { criteria: essayCriteria };
         
       const data = {
-        lesson_id: lessonId,
+        lesson_id: isFinal ? null : lessonId,
         course_id: courseId,
         title,
         description,
         kind,
         payload,
-        score_max: Number(scoreMax)
+        score_max: Number(scoreMax),
+        deadline: deadline ? new Date(deadline).toISOString() : null,
+        assignment_scope: isFinal ? 'final' : 'lesson'
       };
 
       if (assignment?.id) {
@@ -109,7 +119,7 @@ export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
     try {
       await httpClient.delete(`/assignments/${assignment.id}`);
       onClose();
-    } catch (err) {
+    } catch {
       pushToast({ type: 'error', title: 'Lỗi', message: 'Không thể xóa bài tập' });
     }
   };
@@ -140,14 +150,25 @@ export default function AssignmentBuilder({ lessonId, courseId, onClose }) {
               className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" 
             />
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Điểm tối đa</label>
-            <input 
-              type="number"
-              value={scoreMax} 
-              onChange={e => setScoreMax(e.target.value)} 
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Điểm tối đa</label>
+              <input 
+                type="number"
+                value={scoreMax} 
+                onChange={e => setScoreMax(e.target.value)} 
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Hạn chót (Deadline)</label>
+              <input 
+                type="datetime-local"
+                value={deadline} 
+                onChange={e => setDeadline(e.target.value)} 
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
+              />
+            </div>
           </div>
         </div>
 

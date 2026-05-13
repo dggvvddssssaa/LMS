@@ -15,13 +15,14 @@ class CategoryRepository {
     return result.rows[0];
   }
 
-  async setCourseCategories(courseId, categoryIds) {
+  async setCourseCategories(courseId, categoryIds, client) {
+    const queryRunner = client || db;
     // Delete existing
-    await db.query('DELETE FROM course_categories WHERE course_id = $1', [courseId]);
+    await queryRunner.query('DELETE FROM course_categories WHERE course_id = $1', [courseId]);
     if (categoryIds && categoryIds.length > 0) {
       const values = categoryIds.map((catId, index) => `($1, $${index + 2})`).join(', ');
       const params = [courseId, ...categoryIds];
-      await db.query(`INSERT INTO course_categories (course_id, category_id) VALUES ${values}`, params);
+      await queryRunner.query(`INSERT INTO course_categories (course_id, category_id) VALUES ${values}`, params);
     }
   }
 

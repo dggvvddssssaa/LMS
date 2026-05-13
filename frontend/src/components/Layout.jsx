@@ -7,6 +7,9 @@ const Layout = () => {
   const { user, logout } = useAuthStore();
   const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const userName = user?.name || "User";
+  const userRole = user?.role || "";
+  const userInitial = userName.charAt(0).toUpperCase();
 
   const handleLogout = () => {
     logout();
@@ -48,7 +51,7 @@ const Layout = () => {
                   Bảng điều khiển
                   <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-blue-600 group-hover:w-full transition-all duration-300"></span>
                 </Link>
-                {(user.role === "instructor" || user.role === "teacher") && (
+                {(userRole === "instructor" || userRole === "teacher") && (
                   <Link
                     to="/teacher/dashboard"
                     className="text-blue-600 bg-blue-50 px-4 py-2 rounded-lg hover:bg-blue-100 transition-colors font-bold"
@@ -56,7 +59,7 @@ const Layout = () => {
                     Khu vực Giảng viên
                   </Link>
                 )}
-                {user.role === "admin" && (
+                {userRole === "admin" && (
                   <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-xl shadow-inner border border-slate-200">
                     <Link
                       to="/admin/dashboard"
@@ -74,6 +77,10 @@ const Layout = () => {
                       className="text-slate-700 px-4 py-2 hover:bg-white hover:shadow-sm rounded-lg transition-all font-bold"
                     >Khóa học</Link>
                     <Link
+                      to="/admin/certificate-templates"
+                      className="text-slate-700 px-4 py-2 hover:bg-white hover:shadow-sm rounded-lg transition-all font-bold"
+                    >Mẫu chứng chỉ</Link>
+                    <Link
                       to="/admin/live-monitor"
                       className="text-red-600 bg-red-100/50 hover:bg-red-100 px-4 py-2 rounded-lg transition-all font-bold flex items-center gap-2"
                     >
@@ -90,14 +97,14 @@ const Layout = () => {
                 <NotificationBell />
                 <div className="hidden lg:block text-right border-l border-slate-200 pl-5">
                   <div className="text-sm font-bold text-slate-800">
-                    {user.name}
+                    {userName}
                   </div>
                   <div className="text-xs text-slate-500 capitalize">
-                    {user.role}
+                    {userRole}
                   </div>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-blue-100 border-2 border-white shadow-sm flex items-center justify-center text-blue-700 font-bold text-lg">
-                  {user.name.charAt(0).toUpperCase()}
+                  {userInitial}
                 </div>
                 <button
                   onClick={handleLogout}
@@ -166,7 +173,7 @@ const Layout = () => {
                       <span className="text-lg">📊</span> Bảng điều khiển
                     </Link>
 
-                    {(user.role === "instructor" || user.role === "teacher") && (
+                    {(userRole === "instructor" || userRole === "teacher") && (
                       <Link
                         to="/teacher/dashboard"
                         onClick={closeMobileMenu}
@@ -176,7 +183,7 @@ const Layout = () => {
                       </Link>
                     )}
 
-                    {user.role === "admin" && (
+                    {userRole === "admin" && (
                       <>
                         <div className="px-4 pt-4 pb-2 text-xs font-bold text-slate-400 uppercase tracking-widest">
                           Quản trị
@@ -190,6 +197,9 @@ const Layout = () => {
                         <Link to="/admin/courses" onClick={closeMobileMenu} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors">
                           <span className="text-lg">📦</span> Khóa học
                         </Link>
+                        <Link to="/admin/certificate-templates" onClick={closeMobileMenu} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 rounded-xl transition-colors">
+                          <span className="text-lg">🎓</span> Mẫu chứng chỉ
+                        </Link>
                         <Link to="/admin/live-monitor" onClick={closeMobileMenu} className="flex items-center gap-3 px-4 py-3 text-sm font-bold text-red-600 bg-red-50 rounded-xl transition-colors">
                           <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> Giám sát trực tuyến
                         </Link>
@@ -199,11 +209,11 @@ const Layout = () => {
                     <div className="border-t border-slate-100 mt-4 pt-4">
                       <div className="px-4 py-2 flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
-                          {user.name.charAt(0).toUpperCase()}
+                          {userInitial}
                         </div>
                         <div>
-                          <div className="text-sm font-bold text-slate-800">{user.name}</div>
-                          <div className="text-xs text-slate-500 capitalize">{user.role}</div>
+                          <div className="text-sm font-bold text-slate-800">{userName}</div>
+                          <div className="text-xs text-slate-500 capitalize">{userRole}</div>
                         </div>
                       </div>
                       <button

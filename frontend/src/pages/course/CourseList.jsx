@@ -23,7 +23,6 @@ const CourseList = () => {
     };
   }, []);
 
-  const courses = data?.courses || [];
   const categories = data?.categories || [];
 
   useEffect(() => {
@@ -35,6 +34,7 @@ const CourseList = () => {
   }, []);
 
   const filteredCourses = useMemo(() => {
+    const courses = data?.courses || [];
     return courses.filter((course) => {
       const matchType = filter === "all" || course.type === filter;
       const matchCategory =
@@ -47,7 +47,7 @@ const CourseList = () => {
 
       return matchType && matchCategory && matchSearch;
     });
-  }, [courses, filter, selectedCategory, searchQuery]);
+  }, [data, filter, selectedCategory, searchQuery]);
 
   if (loading) {
     return <LoadingState label="Đang tải khóa học..." fullHeight />;

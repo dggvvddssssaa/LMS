@@ -3,14 +3,21 @@ const { sanitizeUpdateData } = require('../utils/columnWhitelist');
 
 class LessonRepository {
   async create(lessonData) {
-    const { section_id, title, content_type, content_url, content_text, order_index, video_url, description } = lessonData;
+    const { section_id, title, content_type, content_url, content_text, video_url, description } = lessonData;
+    let { order_index } = lessonData;
+    
+    if (order_index === undefined || order_index === null) {
+      const orderRes = await db.query('SELECT COALESCE(MAX(order_index), -1) + 1 AS next_order FROM lessons WHERE section_id = $1', [section_id]);
+      order_index = orderRes.rows[0].next_order;
+    }
+
     const query = `
       INSERT INTO lessons (section_id, title, content_type, content_url, content_text, order_index, video_url, description)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
     const result = await db.query(query, [
-      section_id, title, content_type || 'video', content_url || null, content_text || null, order_index || 0, video_url || null, description || null
+      section_id, title, content_type || 'video', content_url || null, content_text || null, order_index, video_url || null, description || null
     ]);
     return result.rows[0];
   }
@@ -57,11 +64,17 @@ class LessonRepository {
       await client.query('BEGIN');
       const results = [];
       for (const update of updates) {
-        const { id, order_index } = update;
-        const res = await client.query(
-          'UPDATE lessons SET order_index = $1 WHERE id = $2 RETURNING id, order_index',
-          [order_index, id]
-        );
+        const { id, order_index, section_id } = update;
+        let queryStr = 'UPDATE lessons SET order_index = $1';
+        let params = [order_index];
+        if (section_id !== undefined) {
+           queryStr += ', section_id = $2';
+           params.push(section_id);
+        }
+        queryStr += ` WHERE id = $${params.length + 1} RETURNING id, order_index, section_id`;
+        params.push(id);
+        
+        const res = await client.query(queryStr, params);
         if (res.rows[0]) results.push(res.rows[0]);
       }
       await client.query('COMMIT');

@@ -11,6 +11,7 @@ const { initMediasoup } = require('./src/webrtc/mediasoupWorker');
 const logger = require('./src/utils/logger');
 const { connectDB } = require('./src/utils/db');
 const { connectRedis } = require('./src/utils/redis');
+const { startSessionReminderJob } = require('./src/jobs/sessionReminderJob');
 
 const PORT = process.env.PORT || 4000;
 const server = http.createServer(app);
@@ -32,6 +33,9 @@ async function startServer() {
         // 4. Start Server
         server.listen(PORT, () => {
             logger.info(`Server running on port ${PORT}`);
+
+            // 5. Start background jobs
+            startSessionReminderJob();
         });
     } catch (err) {
         logger.error('Failed to start server:', err);

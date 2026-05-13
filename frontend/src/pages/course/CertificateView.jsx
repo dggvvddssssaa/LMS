@@ -17,7 +17,7 @@ export default function CertificateView() {
         } else {
           setError('Không tìm thấy chứng chỉ');
         }
-      } catch (err) {
+      } catch {
         setError('Không thể tải chứng chỉ');
       } finally {
         setLoading(false);
@@ -113,9 +113,9 @@ export default function CertificateView() {
 
             {/* Student Name */}
             <h3 className="text-4xl md:text-5xl font-black text-slate-800 mb-2 tracking-tight">
-              {cert.student_name}
+              {cert.student_name_snapshot || cert.student_name}
             </h3>
-            <p className="text-sm text-slate-400 mb-10">{cert.student_email}</p>
+            <p className="text-sm text-slate-400 mb-10">{cert.student_email_snapshot || cert.student_email}</p>
 
             {/* Description */}
             <p className="text-lg text-slate-600 leading-relaxed max-w-2xl mx-auto mb-4">
@@ -125,7 +125,7 @@ export default function CertificateView() {
             {/* Course Name */}
             <div className="inline-block bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl px-8 py-4 mb-10">
               <h4 className="text-2xl md:text-3xl font-black text-blue-700 tracking-tight">
-                {cert.course_title}
+                {cert.course_title_snapshot || cert.course_title}
               </h4>
             </div>
 
@@ -133,17 +133,17 @@ export default function CertificateView() {
             <div className="flex flex-col md:flex-row items-center justify-center gap-8 md:gap-16 mt-6 mb-8">
               <div className="text-center">
                 <p className="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Ngày Cấp</p>
-                <p className="text-lg font-black text-slate-700">{issuedDate}</p>
+                <p className="text-lg font-black text-slate-700">{cert.issued_date_text || issuedDate}</p>
               </div>
-              {cert.instructor_name && (
+              {(cert.instructor_name_snapshot || cert.instructor_name) && (
                 <div className="text-center">
                   <p className="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Giảng Viên</p>
-                  <p className="text-lg font-black text-slate-700">{cert.instructor_name}</p>
+                  <p className="text-lg font-black text-slate-700">{cert.instructor_name_snapshot || cert.instructor_name}</p>
                 </div>
               )}
               <div className="text-center">
                 <p className="text-xs text-slate-400 uppercase tracking-wider font-bold mb-2">Mã Chứng Chỉ</p>
-                <p className="text-lg font-black text-blue-600 font-mono">#{String(cert.id).padStart(6, '0')}</p>
+                <p className="text-lg font-black text-blue-600 font-mono">#{cert.certificate_code || String(cert.id).padStart(6, '0')}</p>
               </div>
             </div>
 

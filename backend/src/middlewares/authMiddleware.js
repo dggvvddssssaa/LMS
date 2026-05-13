@@ -20,6 +20,30 @@ exports.verifyToken = (req, res, next) => {
   }
 };
 
+/**
+ * Optional auth: if a valid Bearer token is present, parse it and set req.user.
+ * If no token or invalid token, silently continue with req.user = null.
+ * Use on public routes that need to optionally identify the caller.
+ */
+exports.optionalAuth = (req, res, next) => {
+  const header = req.headers.authorization;
+  if (!header || !header.startsWith('Bearer ')) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const token = header.split(' ')[1];
+    const verified = jwt.verify(token, getJwtSecret());
+    verified.role = normalizeRole(verified.role);
+    req.user = verified;
+  } catch {
+    req.user = null;
+  }
+
+  next();
+};
+
 exports.requireRole = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !hasRole(req.user.role, ...roles)) {

@@ -22,6 +22,7 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const certificateRoutes = require('./routes/certificateRoutes');
 const materialRoutes = require('./routes/materialRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
+const certificateTemplateRoutes = require('./routes/certificateTemplateRoutes');
 
 const app = express();
 
@@ -66,10 +67,11 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/certificates', certificateRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/assignments', assignmentRoutes);
+app.use('/api/certificate-templates', certificateTemplateRoutes);
 
-// Admin-prefixed aliases — delegates to existing route handlers
-// The underlying routes already enforce verifyToken + requireRole('admin', 'instructor')
-app.use('/api/admin/courses', courseRoutes);
+// Admin-prefixed routes — dedicated admin routes with mandatory auth
+const adminCourseRoutes = require('./routes/adminCourseRoutes');
+app.use('/api/admin/courses', adminCourseRoutes);
 app.use('/api/admin/sections', sectionRoutes);
 app.use('/api/admin/lessons', lessonRoutes);
 app.use('/api/admin/assignments', assignmentRoutes);

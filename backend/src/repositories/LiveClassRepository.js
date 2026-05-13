@@ -2,14 +2,15 @@ const db = require('../config/db');
 const { sanitizeUpdateData } = require('../utils/columnWhitelist');
 
 class LiveClassRepository {
-  async create(liveClassData) {
+  async create(liveClassData, client) {
+    const queryRunner = client || db;
     const { course_id, schedule_config, total_sessions, max_students, status } = liveClassData;
     const query = `
       INSERT INTO live_classes (course_id, schedule_config, total_sessions, max_students, status)
       VALUES ($1, $2, $3, $4, $5)
       RETURNING *
     `;
-    const result = await db.query(query, [
+    const result = await queryRunner.query(query, [
       course_id, 
       schedule_config, 
       total_sessions || 0, 

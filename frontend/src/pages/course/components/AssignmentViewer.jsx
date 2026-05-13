@@ -18,6 +18,7 @@ export default function AssignmentViewer({ lessonId }) {
     if (lessonId) {
       fetchData();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lessonId]);
 
   const fetchData = async () => {
@@ -40,7 +41,7 @@ export default function AssignmentViewer({ lessonId }) {
               setEssayAnswer(sub.answers.essayText || '');
             }
           }
-        } catch (e) {
+        } catch {
           // No submission yet
         }
       } else {

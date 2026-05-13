@@ -13,6 +13,26 @@ class SectionRepository {
     return result.rows[0];
   }
 
+  async batchUpdateOrder(updates) {
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
+      const results = [];
+      for (const update of updates) {
+        const { id, order_index } = update;
+        const res = await client.query('UPDATE sections SET order_index = $1 WHERE id = $2 RETURNING *', [order_index, id]);
+        results.push(res.rows[0]);
+      }
+      await client.query('COMMIT');
+      return results;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async findByCourseId(courseId) {
     const query = `
       SELECT * FROM sections

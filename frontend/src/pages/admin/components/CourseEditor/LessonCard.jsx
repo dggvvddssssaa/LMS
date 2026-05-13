@@ -5,17 +5,39 @@ function LessonEditForm({ lesson, onSave, onCancel }) {
   const [title, setTitle] = useState(lesson.title || '');
   const [videoUrl, setVideoUrl] = useState(lesson.video_url || lesson.content_url || '');
   const [desc, setDesc] = useState(lesson.description || lesson.content_text || '');
+  const [duration, setDuration] = useState(lesson.duration || 0);
+  const [contentType, setContentType] = useState(lesson.content_type || 'video');
+  const [isFreePreview, setIsFreePreview] = useState(lesson.is_free_preview || false);
   
   return (
     <div className="bg-blue-50/50 rounded-2xl p-5 border border-blue-100 space-y-4 animate-fade-in shadow-inner">
-      <div>
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Tên bài học</label>
-        <input autoFocus value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="VD: Bài 1: Giới thiệu khóa học" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Tên bài học</label>
+          <input autoFocus value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="VD: Bài 1: Giới thiệu khóa học" />
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Loại nội dung</label>
+          <select value={contentType} onChange={e => setContentType(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400">
+            <option value="video">Video</option>
+            <option value="document">Tài liệu / Bài đọc</option>
+          </select>
+        </div>
       </div>
       <div>
         <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Link Video (Tùy chọn)</label>
         <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="https://youtube.com/embed/..." />
         {videoUrl && <div className="mt-3 bg-black rounded-xl overflow-hidden aspect-video shadow-md"><iframe src={videoUrl} className="w-full h-full" allowFullScreen title="preview" /></div>}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Thời lượng (phút)</label>
+          <input type="number" min="0" value={duration} onChange={e => setDuration(Number(e.target.value))} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" />
+        </div>
+        <div className="flex items-center gap-3 pt-6">
+          <input type="checkbox" id={`free_preview_${lesson.id}`} checked={isFreePreview} onChange={e => setIsFreePreview(e.target.checked)} className="w-5 h-5 text-blue-600 rounded" />
+          <label htmlFor={`free_preview_${lesson.id}`} className="block text-sm font-bold text-slate-800 cursor-pointer">Cho phép xem thử miễn phí</label>
+        </div>
       </div>
       <div>
         <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Nội dung / Mô tả</label>
@@ -23,7 +45,7 @@ function LessonEditForm({ lesson, onSave, onCancel }) {
       </div>
       <div className="flex gap-3 justify-end pt-2">
         <button onClick={onCancel} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition shadow-sm">Hủy</button>
-        <button onClick={() => onSave({ title, video_url: videoUrl, description: desc, content_text: desc })} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/20">Lưu Thay Đổi</button>
+        <button onClick={() => onSave({ title, video_url: videoUrl, description: desc, content_text: desc, duration, content_type: contentType, is_free_preview: isFreePreview })} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/20">Lưu Thay Đổi</button>
       </div>
     </div>
   );
@@ -67,7 +89,7 @@ function LessonActionsMenu({ isOpen, onClose, onEdit, onConfigAssignment, onDele
   );
 }
 
-export default function LessonCard({ lesson, index, sectionId, courseId, isFirst, isLast, onUpdate, onDelete, onMoveUp, onMoveDown }) {
+export default function LessonCard({ lesson, index, _sectionId, courseId, isFirst, isLast, onUpdate, onDelete, onMoveUp, onMoveDown }) {
   const [isEditing, setIsEditing] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showAssignmentBuilder, setShowAssignmentBuilder] = useState(false);

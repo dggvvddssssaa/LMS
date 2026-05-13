@@ -50,11 +50,17 @@ export default function AdminCourseList() {
     const handleCreate = async () => {
         try {
             const res = await httpClient.post('/admin/courses', { title: 'Khóa học mới' });
-            if (res.data.success) {
-                navigate(`/admin/courses/${res.data.data.id}/editor`);
+            const courseId = res.data?.data?.id;
+            
+            if (!res.data?.success || !courseId) {
+                pushToast({ type: 'error', title: 'Lỗi tạo khóa học', message: res.data?.message || 'API không trả về ID khóa học' });
+                return;
             }
+            
+            navigate(`/admin/courses/${courseId}/editor`);
         } catch (err) {
-            pushToast({ type: 'error', title: 'Không thể tạo khóa học', message: err.message });
+            const msg = err.response?.data?.message || err.message || 'Không thể tạo khóa học';
+            pushToast({ type: 'error', title: 'Không thể tạo khóa học', message: msg });
         }
     };
 
@@ -62,59 +68,69 @@ export default function AdminCourseList() {
     if (error) return <ErrorState message={error.message} onRetry={() => window.location.reload()} />;
 
     return (
-        <div className="p-6 max-w-7xl mx-auto">
-            <div className="flex items-center justify-between mb-8">
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Quản lý khóa học</h1>
-                    <p className="text-gray-500 mt-1">{courses.length} khóa học</p>
-                </div>
-                <button onClick={handleCreate} className="px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition shadow-sm">
-                    + Tạo khóa học mới
-                </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <div className="text-3xl font-bold text-indigo-600">{courses.length}</div>
-                    <div className="text-sm text-gray-500 mt-1">Tổng khóa học</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <div className="text-3xl font-bold text-green-600">{courses.filter(c => c.status === 'published').length}</div>
-                    <div className="text-sm text-gray-500 mt-1">Đã xuất bản</div>
-                </div>
-                <div className="bg-white rounded-xl border border-gray-200 p-5">
-                    <div className="text-3xl font-bold text-amber-600">{courses.filter(c => c.status === 'draft').length}</div>
-                    <div className="text-sm text-gray-500 mt-1">Bản nháp</div>
+        <div className="-mx-4 lg:-mx-8 -my-8 min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 animate-fade-in">
+            <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 text-white py-10 px-4 relative overflow-hidden mb-8">
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE4YzAtOS45NC04LjA2LTE4LTE4LTE4UzAgOC4wNiAwIDE4czguMDYgMTggMTggMTggMTgtOC4wNiAxOC0xOHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-10" />
+                <div className="container mx-auto max-w-7xl relative z-10 flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="text-center md:text-left">
+                        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">Quản lý khóa học</h1>
+                        <p className="text-blue-100 opacity-90">{courses.length} khóa học trên hệ thống</p>
+                    </div>
+                    <button onClick={handleCreate} className="px-6 py-3 bg-white text-blue-900 rounded-full font-bold hover:bg-blue-50 transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5">
+                        + Tạo khóa học mới
+                    </button>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div className="container mx-auto max-w-7xl px-4 pb-12">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center transition-all hover:shadow-md hover:-translate-y-1">
+                        <div className="text-4xl font-black text-blue-600 mb-1">{courses.length}</div>
+                        <div className="text-sm font-bold text-slate-400 uppercase tracking-wider">Tổng khóa học</div>
+                    </div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center transition-all hover:shadow-md hover:-translate-y-1">
+                        <div className="text-4xl font-black text-green-600 mb-1">{courses.filter(c => c.status === 'published').length}</div>
+                        <div className="text-sm font-bold text-slate-400 uppercase tracking-wider">Đã xuất bản</div>
+                    </div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 flex flex-col items-center justify-center transition-all hover:shadow-md hover:-translate-y-1">
+                        <div className="text-4xl font-black text-amber-500 mb-1">{courses.filter(c => c.status === 'draft').length}</div>
+                        <div className="text-sm font-bold text-slate-400 uppercase tracking-wider">Bản nháp</div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {courses.map(course => (
-                    <div key={course.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden hover:shadow-lg transition group">
-                        <div className="relative h-40 bg-gradient-to-br from-indigo-100 to-blue-50">
-                            {course.thumbnail && <img src={course.thumbnail} alt="" className="w-full h-full object-cover" />}
+                    <div key={course.id} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100 flex flex-col hover:shadow-xl hover:-translate-y-1 transition-all duration-300 group">
+                        <div className="relative h-44 bg-slate-100 overflow-hidden">
+                            {course.thumbnail ? (
+                                <img src={course.thumbnail} alt="" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            ) : (
+                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-slate-100 to-slate-200">
+                                    <span className="text-5xl">{course.type === 'live' ? '🔴' : '📹'}</span>
+                                </div>
+                            )}
                             <div className="absolute top-3 right-3 flex gap-1.5">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${course.status === 'published' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>{course.status === 'published' ? 'Published' : 'Draft'}</span>
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${course.type === 'live' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>{course.type === 'live' ? 'Live' : 'Video'}</span>
+                                <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${course.status === 'published' ? 'bg-green-500 text-white shadow-md' : 'bg-amber-400 text-white shadow-md'}`}>{course.status === 'published' ? 'Đã xuất bản' : 'Bản nháp'}</span>
+                                <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider ${course.type === 'live' ? 'bg-red-500 text-white shadow-md' : 'bg-blue-500 text-white shadow-md'}`}>{course.type === 'live' ? 'Live' : 'Video'}</span>
                             </div>
                         </div>
-                        <div className="p-4">
-                            <h3 className="font-bold text-gray-800 mb-1 line-clamp-1">{course.title}</h3>
-                            <p className="text-xs text-gray-500 mb-3 line-clamp-2">{course.description || 'Chưa có mô tả'}</p>
-                            <div className="flex items-center justify-between text-xs text-gray-400 mb-3">
+                        <div className="p-5 flex flex-col flex-grow">
+                            <h3 className="font-bold text-lg mb-2 text-slate-800 group-hover:text-blue-600 transition-colors line-clamp-2 leading-tight min-h-[48px]">{course.title}</h3>
+                            <p className="text-xs text-slate-500 mb-4 line-clamp-2">{course.description || 'Chưa có mô tả'}</p>
+                            <div className="flex items-center justify-between text-xs text-slate-400 mb-4 font-medium">
                                 <span>{course._count?.enrollments || 0} học viên</span>
-                                <span className="font-bold text-indigo-600">{parseFloat(course.price) > 0 ? `${parseFloat(course.price).toLocaleString()}đ` : 'Miễn phí'}</span>
+                                <span className="font-black text-blue-600 text-sm">{parseFloat(course.price) > 0 ? `${parseFloat(course.price).toLocaleString()} đ` : 'Miễn phí'}</span>
                             </div>
-                            <div className="flex gap-2">
-                                <Link to={`/admin/courses/${course.id}/editor`} className="flex-1 text-center px-3 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-bold hover:bg-indigo-100 transition">
-                                    ✏️ Chỉnh sửa
+                            <div className="flex gap-2 mt-auto pt-4 border-t border-slate-50">
+                                <Link to={`/admin/courses/${course.id}/editor`} className="flex-1 text-center px-3 py-2.5 bg-blue-50 text-blue-600 rounded-xl text-xs font-bold hover:bg-blue-100 transition-colors">
+                                    ✏️ Sửa
                                 </Link>
                                 {course.status !== 'published' && (
-                                    <button onClick={() => handlePublish(course.id)} className="px-3 py-2 bg-green-50 text-green-600 rounded-lg text-xs font-bold hover:bg-green-100 transition">
+                                    <button onClick={() => handlePublish(course.id)} className="px-3 py-2.5 bg-green-50 text-green-600 rounded-xl text-xs font-bold hover:bg-green-100 transition-colors" title="Xuất bản">
                                         🚀
                                     </button>
                                 )}
-                                <button onClick={() => handleDelete(course.id)} className="px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-bold hover:bg-red-100 transition">
+                                <button onClick={() => handleDelete(course.id)} className="px-3 py-2.5 bg-red-50 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors" title="Xóa">
                                     🗑️
                                 </button>
                             </div>
@@ -133,6 +149,7 @@ export default function AdminCourseList() {
                 cancelText={confirmState.cancelText}
                 variant={confirmState.variant}
             />
+            </div>
         </div>
     );
 }

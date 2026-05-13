@@ -12,12 +12,17 @@ function getLocalIp() {
     return '127.0.0.1';
 }
 
+const listenIp = process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0';
+const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP || getLocalIp();
+
+// Log effective config at startup
+console.log(`[mediasoup config] listenIp=${listenIp}, announcedIp=${announcedIp}, ports=${process.env.MEDIASOUP_MIN_PORT || 40000}-${process.env.MEDIASOUP_MAX_PORT || 40100}`);
 
 module.exports = {
     // Worker settings
     worker: {
-        rtcMinPort: Number(process.env.MEDIASOUP_MIN_PORT) || 2000,
-        rtcMaxPort: Number(process.env.MEDIASOUP_MAX_PORT) || 2020,
+        rtcMinPort: Number(process.env.MEDIASOUP_MIN_PORT) || 40000,
+        rtcMaxPort: Number(process.env.MEDIASOUP_MAX_PORT) || 40100,
         logLevel: 'warn',
         logTags: [
             'info',
@@ -26,12 +31,6 @@ module.exports = {
             'rtp',
             'srtp',
             'rtcp',
-            // 'rtx',
-            // 'bwe',
-            // 'score',
-            // 'simulcast',
-            // 'svc',
-            // 'sctp',
         ],
     },
     // Router settings
@@ -51,19 +50,29 @@ module.exports = {
                     'x-google-start-bitrate': 1000
                 }
             },
+            {
+                kind: 'video',
+                mimeType: 'video/H264',
+                clockRate: 90000,
+                parameters: {
+                    'packetization-mode': 1,
+                    'profile-level-id': '4d0032',
+                    'level-asymmetry-allowed': 1,
+                    'x-google-start-bitrate': 1000
+                }
+            },
         ]
     },
     // WebRtcTransport settings
     webRtcTransport: {
         listenIps: [
             {
-                ip: process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0',
-                announcedIp: process.env.MEDIASOUP_ANNOUNCED_IP || getLocalIp()
+                ip: listenIp,
+                announcedIp: announcedIp
             }
         ],
         initialAvailableOutgoingBitrate: 1000000,
         minimumAvailableOutgoingBitrate: 600000,
         maxSctpMessageSize: 262144,
-        // maxIncomingBitrate: 1500000
     }
 };

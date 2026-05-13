@@ -11,20 +11,13 @@ class ProgressService {
   }
 
   async _updateCourseProgress(enrollmentId, courseId) {
-    // Calculate total lessons and completed lessons
-    const totalLessonsQuery = `
-        SELECT count(*) as total FROM lessons l
-        JOIN sections s ON l.section_id = s.id OR l.course_id = $1
-        WHERE l.course_id = $1
-    `;
-    // F8 style schema uses course_id directly in lessons.
     const completedLessonsQuery = `
         SELECT count(*) as completed FROM lesson_progress lp
         WHERE lp.enrollment_id = $1 AND lp.is_completed = true
     `;
 
     const [totalRes, completedRes] = await Promise.all([
-        db.query(`SELECT count(*) as total FROM lessons WHERE course_id = $1`, [courseId]),
+        db.query(`SELECT count(l.id) as total FROM lessons l JOIN sections s ON l.section_id = s.id WHERE s.course_id = $1`, [courseId]),
         db.query(completedLessonsQuery, [enrollmentId])
     ]);
 
@@ -50,7 +43,7 @@ class ProgressService {
     const enrollmentId = enrollment.id;
 
     // Verify lesson belongs to course
-    const lessonRes = await db.query(`SELECT id FROM lessons WHERE id = $1 AND course_id = $2`, [lessonId, courseId]);
+    const lessonRes = await db.query(`SELECT l.id FROM lessons l JOIN sections s ON l.section_id = s.id WHERE l.id = $1 AND s.course_id = $2`, [lessonId, courseId]);
     if (lessonRes.rows.length === 0) {
         throw new Error('Lesson not found in this course');
     }
@@ -68,36 +61,57 @@ class ProgressService {
     // Recalculate total course progress
     const courseProgress = await this._updateCourseProgress(enrollmentId, courseId);
 
-    // If completed 100%, check and generate certificate
-    let certificate = null;
-    if (courseProgress.progressPercent === 100) {
-      // Check if certificate already exists
-      const certRes = await db.query('SELECT id FROM certificates WHERE enrollment_id = $1', [enrollmentId]);
-      if (certRes.rows.length === 0) {
-          // Generate new certificate
-          const certUrl = `/certificates/${userId}_${courseId}.pdf`; // Mock URL for now
-          const newCert = await db.query(
-            `INSERT INTO certificates (enrollment_id, user_id, course_id, certificate_url) 
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [enrollmentId, userId, courseId, certUrl]
-          );
-          certificate = newCert.rows[0];
-          
-          // Trigger notification
-          const NotificationService = require('./NotificationService');
-          await NotificationService.createNotification(
-            userId, 
-            'Chúc mừng! Bạn đã hoàn thành khóa học và nhận được chứng chỉ mới.', 
-            'certificate_earned'
-          );
-      }
-    }
+    // Try generating certificate if conditions met
+    let certificate = await this.checkAndIssueCertificate(userId, courseId, enrollmentId, courseProgress.progressPercent);
 
     return {
         lessonProgress: result.rows[0],
         courseProgress,
         certificate
     };
+  }
+
+  async checkAndIssueCertificate(userId, courseId, enrollmentId, progressPercent) {
+    if (progressPercent !== 100) return null;
+
+    const courseRes = await db.query('SELECT certificate_enabled, final_assignment_required, final_assignment_pass_percent FROM courses WHERE id = $1', [courseId]);
+    if (courseRes.rows.length === 0 || !courseRes.rows[0].certificate_enabled) return null;
+
+    const course = courseRes.rows[0];
+
+    // Check final assignment if required
+    if (course.final_assignment_required) {
+      const finalAssignRes = await db.query("SELECT id FROM assignments WHERE course_id = $1 AND assignment_scope = 'final' LIMIT 1", [courseId]);
+      if (finalAssignRes.rows.length > 0) {
+         const finalAssignId = finalAssignRes.rows[0].id;
+         const submissionRes = await db.query("SELECT score, status FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2", [finalAssignId, userId]);
+         if (submissionRes.rows.length === 0) return null; // Not submitted yet
+         
+         const sub = submissionRes.rows[0];
+         // Depending on how score is calculated. Assume score is percentage (0-100)
+         if (sub.score < (course.final_assignment_pass_percent || 80)) return null; 
+      }
+    }
+
+    // Generate certificate
+    const certRes = await db.query('SELECT id, certificate_url FROM certificates WHERE enrollment_id = $1', [enrollmentId]);
+    if (certRes.rows.length > 0) return certRes.rows[0];
+
+    const certUrl = `/certificates/${userId}_${courseId}.pdf`; // Mock URL for now
+    const newCert = await db.query(
+      `INSERT INTO certificates (enrollment_id, user_id, course_id, certificate_url) 
+       VALUES ($1, $2, $3, $4) RETURNING *`,
+      [enrollmentId, userId, courseId, certUrl]
+    );
+    
+    // Trigger notification
+    const NotificationService = require('./NotificationService');
+    await NotificationService.createNotification(
+      userId, 
+      'Chúc mừng! Bạn đã hoàn thành khóa học và nhận được chứng chỉ mới.', 
+      'certificate_earned'
+    );
+    return newCert.rows[0];
   }
 
   async savePosition(userId, courseId, lessonId, lastPosition) {

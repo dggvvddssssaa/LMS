@@ -18,6 +18,19 @@ exports.createSection = async (req, res) => {
   }
 };
 
+exports.reorderSections = async (req, res) => {
+  try {
+    const updates = req.body;
+    if (!Array.isArray(updates)) {
+      return res.status(400).json({ success: false, message: 'Expected an array of updates' });
+    }
+    const results = await SectionRepository.batchUpdateOrder(updates);
+    res.json({ success: true, data: results });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.updateSection = async (req, res) => {
   try {
     const section = await SectionRepository.update(req.params.id, req.body);

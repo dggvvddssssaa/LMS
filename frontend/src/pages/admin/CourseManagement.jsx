@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { Link } from 'react-router-dom';
 import useAuthStore from '../../store/useAuthStore';
 import { courseService } from '../../services';
@@ -286,6 +286,7 @@ const CourseRow = memo(({ course, onTogglePublish, onDeleteCourse, onEditCourse 
         </tr>
     );
 });
+CourseRow.displayName = 'CourseRow';
 
 export default CourseManagement;
 

@@ -1,10 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/courseController');
-const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
+const { verifyToken, requireRole, optionalAuth } = require('../middlewares/authMiddleware');
 
+// Public routes — optionalAuth parses token if present (for draft visibility check)
 router.get('/', courseController.getAllCourses);
-router.get('/:id', courseController.getCourseById);
+router.get('/:id', optionalAuth, courseController.getCourseById);
 
 // Instructors and Admins can create courses
 router.post('/', verifyToken, requireRole('admin', 'instructor'), courseController.createCourse);

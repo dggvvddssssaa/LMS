@@ -3,6 +3,8 @@ const LiveClassRepository = require('../repositories/LiveClassRepository');
 const SectionRepository = require('../repositories/SectionRepository');
 const LessonRepository = require('../repositories/LessonRepository');
 const { hasRole } = require('../utils/roles');
+const db = require('../config/db');
+const { slugifyVietnamese } = require('../utils/slugUtils');
 
 class CourseService {
   normalizeCourseType(type) {
@@ -11,9 +13,19 @@ class CourseService {
     return type;
   }
 
+  async generateUniqueCourseSlug(title, excludeId = null) {
+    const base = slugifyVietnamese(title) || 'course';
+    let slug = base;
+    let i = 2;
+
+    while (await CourseRepository.findBySlug(slug, excludeId)) {
+      slug = `${base}-${i++}`;
+    }
+
+    return slug;
+  }
+
   async createCourse(courseData, user) {
-    // Check if user is verified instructor
-    // For simplicity we'll just check if role is instructor here
     if (!hasRole(user.role, 'admin', 'instructor')) {
       throw new Error('Unauthorized to create courses');
     }
@@ -24,25 +36,49 @@ class CourseService {
       throw new Error('Invalid course type. Must be video, live, or hybrid');
     }
 
-    const newCourse = await CourseRepository.create({
-      ...courseData,
-      type: normalizedType,
-      instructor_id: user.id
-    });
-
-    if (courseData.categoryIds) {
-      const CategoryRepository = require('../repositories/CategoryRepository');
-      await CategoryRepository.setCourseCategories(newCourse.id, courseData.categoryIds);
+    let slug = courseData.slug;
+    if (!slug && courseData.title) {
+      slug = await this.generateUniqueCourseSlug(courseData.title);
+    } else if (slug) {
+      // Check if provided slug is unique
+      const existing = await CourseRepository.findBySlug(slug);
+      if (existing) {
+        throw new Error('Slug already exists');
+      }
     }
 
-    if (newCourse.type === 'live' && courseData.live_class_data) {
-      await LiveClassRepository.create({
-        course_id: newCourse.id,
-        ...courseData.live_class_data
-      });
-    }
+    // Use a transaction to ensure atomicity: course + categories + live_class
+    const client = await db.pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    return newCourse;
+      const newCourse = await CourseRepository.create({
+        ...courseData,
+        slug,
+        type: normalizedType,
+        instructor_id: user.id
+      }, client);
+
+      if (courseData.categoryIds) {
+        const CategoryRepository = require('../repositories/CategoryRepository');
+        await CategoryRepository.setCourseCategories(newCourse.id, courseData.categoryIds, client);
+      }
+
+      if (newCourse.type === 'live' && courseData.live_class_data) {
+        await LiveClassRepository.create({
+          course_id: newCourse.id,
+          ...courseData.live_class_data
+        }, client);
+      }
+
+      await client.query('COMMIT');
+      return newCourse;
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 
   async getAllCourses(filters) {
@@ -92,6 +128,13 @@ class CourseService {
     const nextData = { ...updateData };
     if (nextData.type) {
       nextData.type = this.normalizeCourseType(nextData.type);
+    }
+
+    if (nextData.slug && nextData.slug !== course.slug) {
+      const existing = await CourseRepository.findBySlug(nextData.slug, id);
+      if (existing) {
+        throw new Error('Slug already exists');
+      }
     }
 
     // Handle categories update if provided

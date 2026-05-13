@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import useAuthStore from '../../store/useAuthStore';
 import { adminService } from '../../services';
 import { useToast } from '../../contexts/ToastContext';
@@ -125,28 +125,33 @@ const UserManagement = () => {
     if (error) return <ErrorState message={error.message} onRetry={fetchUsers} />;
 
     return (
-        <div className="space-y-6 animate-fade-in">
-            <div className="flex justify-between items-end">
-                <div>
-                    <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Quản Lý Người Dùng</h1>
-                    <p className="text-slate-500 mt-1">Quản lý tài khoản và xét duyệt giảng viên.</p>
-                </div>
-                <div className="flex gap-4">
-                    <input
-                        type="text"
-                        placeholder="Tìm theo tên, email, ID..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        className="px-4 py-2 border border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 min-w-[250px]"
-                    />
-                    <button onClick={() => setShowAddModal(true)} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl shadow hover:bg-blue-700 transition">
-                        + Thêm Người Dùng
-                    </button>
+        <div className="-mx-4 lg:-mx-8 -my-8 min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-50 animate-fade-in">
+            <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-purple-900 text-white py-12 px-4 relative overflow-hidden mb-8">
+                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PHBhdGggZD0iTTM2IDE4YzAtOS45NC04LjA2LTE4LTE4LTE4UzAgOC4wNiAwIDE4czguMDYgMTggMTggMTggMTgtOC4wNiAxOC0xOHoiLz48L2c+PC9nPjwvc3ZnPg==')] opacity-10" />
+                <div className="container mx-auto max-w-7xl relative z-10 flex flex-col md:flex-row justify-between items-end gap-4">
+                    <div>
+                        <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight mb-2">Quản Lý Người Dùng</h1>
+                        <p className="text-blue-100 opacity-90 text-lg">Quản lý tài khoản và xét duyệt giảng viên.</p>
+                    </div>
+                    <div className="flex gap-4 w-full md:w-auto">
+                        <input
+                            type="text"
+                            placeholder="Tìm theo tên, email, ID..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="flex-1 px-5 py-3 border-none rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white/10 text-white placeholder-blue-200 backdrop-blur-sm min-w-[250px]"
+                        />
+                        <button onClick={() => setShowAddModal(true)} className="px-6 py-3 bg-white text-blue-900 font-bold rounded-xl shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all whitespace-nowrap">
+                            + Thêm Người Dùng
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100">
-                <div className="overflow-x-auto">
+            <div className="container mx-auto max-w-7xl px-4 pb-12">
+
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-2 md:p-6 overflow-hidden">
+                <div className="overflow-x-auto rounded-2xl border border-slate-50">
                     <table className="w-full text-left border-collapse">
                         <thead>
                             <tr className="bg-slate-50 text-xs text-slate-500 uppercase tracking-wider border-b border-slate-100">
@@ -230,6 +235,7 @@ const UserManagement = () => {
                 variant={confirmState.variant}
             />
         </div>
+        </div>
     );
 };
 
@@ -283,5 +289,6 @@ const UserRow = memo(({ user, onViewDetails, onVerifyInstructor, onDeleteUser })
         </tr>
     );
 });
+UserRow.displayName = 'UserRow';
 
 export default UserManagement;
