@@ -27,7 +27,7 @@ exports.confirmPayment = async (req, res) => {
     const result = await EnrollmentService.confirmPayment(transactionId, req.user.id);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
-    res.status(400).json({ success: false, message: err.message });
+    res.status(err.statusCode || 400).json({ success: false, message: err.message });
   }
 };
 

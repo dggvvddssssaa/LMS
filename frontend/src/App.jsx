@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Routes, Route, Link, Navigate, Outlet } from "react-router-dom";
 import Layout from "./components/Layout";
 import ProtectedRoute from "./components/ProtectedRoute";
@@ -6,24 +6,25 @@ import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
 import Dashboard from "./pages/dashboard/Dashboard";
 import TeacherDashboard from "./pages/teacher/TeacherDashboard";
-import Classroom from "./components/Classroom";
 
 import CourseList from "./pages/course/CourseList";
 import CourseDetail from "./pages/course/CourseDetail";
 import TeacherCourseDetail from "./pages/teacher/TeacherCourseDetail";
 import SessionCreate from "./pages/session/SessionCreate";
-import LessonLearning from "./pages/course/LessonLearning";
 import CertificateView from "./pages/course/CertificateView";
 
 // Admin imports
-import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import UserManagement from "./pages/admin/UserManagement";
 import AdminLiveMonitor from "./pages/admin/AdminLiveMonitor";
 import AdminCourseList from "./pages/admin/AdminCourseList";
-import CourseEditor from "./pages/admin/CourseEditor";
 import AdminCertificateTemplates from "./pages/admin/AdminCertificateTemplates";
-import AdminCertificateTemplateEditor from "./pages/admin/AdminCertificateTemplateEditor";
+
+// Lazy Loaded Routes
+const Classroom = lazy(() => import("./components/Classroom"));
+const LessonLearning = lazy(() => import("./pages/course/LessonLearning"));
+const CourseEditor = lazy(() => import("./pages/admin/CourseEditor"));
+const AdminCertificateTemplateEditor = lazy(() => import("./pages/admin/AdminCertificateTemplateEditor"));
 
 const Landing = () => (
   <div className="p-20 text-center bg-white min-h-[60vh] flex flex-col justify-center items-center rounded-2xl shadow-sm border border-slate-100 mt-8 mx-4 lg:mx-auto max-w-5xl">
@@ -61,7 +62,8 @@ const AuthRequired = ({ roles }) => (
 
 function App() {
   return (
-    <Routes>
+    <Suspense fallback={<div className="h-screen w-screen flex items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div></div>}>
+      <Routes>
       <Route path="/" element={<Layout />}>
         {/* Public routes */}
         <Route index element={<Landing />} />
@@ -102,6 +104,7 @@ function App() {
       <Route path="/course/:id/learn" element={<ProtectedRoute><LessonLearning /></ProtectedRoute>} />
       <Route path="/certificate/:id" element={<CertificateView />} />
     </Routes>
+    </Suspense>
   );
 }
 

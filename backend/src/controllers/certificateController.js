@@ -22,6 +22,10 @@ exports.getCertificateById = async (req, res) => {
     const cert = await CertificateService.getCertificateDetails(req.params.id);
     if (!cert) return res.status(404).json({ success: false, message: 'Certificate not found' });
     
+    if (req.user.role !== 'admin' && req.user.id !== cert.user_id) {
+       return res.status(403).json({ success: false, message: 'Forbidden' });
+    }
+    
     res.status(200).json({ success: true, data: cert });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -68,6 +72,13 @@ exports.verifyCertificate = async (req, res) => {
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Certificate not found' });
     
     const cert = await CertificateService.getCertificateDetails(rows[0].id);
+    
+    // Filter PII and internals
+    delete cert.student_email_snapshot;
+    delete cert.metadata_json;
+    delete cert.enrollment_id;
+    delete cert.user_id;
+
     res.status(200).json({ success: true, data: cert });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

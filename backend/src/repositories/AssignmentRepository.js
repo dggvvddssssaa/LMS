@@ -11,6 +11,16 @@ class AssignmentRepository {
     return result.rows;
   }
 
+  async getBySection(sectionId) {
+    const query = `
+      SELECT * FROM assignments
+      WHERE section_id = $1 AND assignment_scope = 'section'
+      ORDER BY created_at DESC
+    `;
+    const result = await db.query(query, [sectionId]);
+    return result.rows;
+  }
+
   async getByCourseFinal(courseId) {
     const query = `
       SELECT * FROM assignments
@@ -29,20 +39,20 @@ class AssignmentRepository {
   }
 
   async create(data) {
-    const { lesson_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent } = data;
+    const { lesson_id, section_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent } = data;
     const query = `
-      INSERT INTO assignments (lesson_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      INSERT INTO assignments (lesson_id, section_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     const result = await db.query(query, [
-      lesson_id || null, course_id, title, description, deadline || null, kind || 'mcq', payload ? JSON.stringify(payload) : null, score_max || 100, assignment_scope || 'lesson', pass_percent || 80
+      lesson_id || null, section_id || null, course_id, title, description, deadline || null, kind || 'mcq', payload ? JSON.stringify(payload) : null, score_max || 100, assignment_scope || 'lesson', pass_percent || 80
     ]);
     return result.rows[0];
   }
 
   async update(id, data) {
-    const { title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent } = data;
+    const { title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent, section_id } = data;
     const query = `
       UPDATE assignments
       SET title = COALESCE($1, title),
@@ -52,12 +62,13 @@ class AssignmentRepository {
           payload = COALESCE($5, payload),
           score_max = COALESCE($6, score_max),
           assignment_scope = COALESCE($7, assignment_scope),
-          pass_percent = COALESCE($8, pass_percent)
-      WHERE id = $9
+          pass_percent = COALESCE($8, pass_percent),
+          section_id = COALESCE($9, section_id)
+      WHERE id = $10
       RETURNING *
     `;
     const result = await db.query(query, [
-      title, description, deadline, kind, payload ? JSON.stringify(payload) : null, score_max, assignment_scope, pass_percent, id
+      title, description, deadline, kind, payload ? JSON.stringify(payload) : null, score_max, assignment_scope, pass_percent, section_id, id
     ]);
     return result.rows[0];
   }

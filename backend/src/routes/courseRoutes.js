@@ -6,6 +6,7 @@ const { verifyToken, requireRole, optionalAuth } = require('../middlewares/authM
 // Public routes — optionalAuth parses token if present (for draft visibility check)
 router.get('/', courseController.getAllCourses);
 router.get('/:id', optionalAuth, courseController.getCourseById);
+router.get('/:id/learning-outline', verifyToken, courseController.getLearningOutline);
 
 // Instructors and Admins can create courses
 router.post('/', verifyToken, requireRole('admin', 'instructor'), courseController.createCourse);

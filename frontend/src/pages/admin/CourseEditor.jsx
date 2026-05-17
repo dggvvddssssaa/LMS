@@ -5,6 +5,7 @@ import LessonCard from './components/CourseEditor/LessonCard';
 import LiveClassSchedule from './components/CourseEditor/LiveClassSchedule';
 import AssignmentBuilder from './components/CourseEditor/AssignmentBuilder';
 import { useToast } from '../../contexts/ToastContext';
+import { normalizeYouTubeUrl, isYouTubeUrl } from '../../utils/youtube';
 import {
   DndContext,
   closestCenter,
@@ -75,6 +76,7 @@ export default function CourseEditor() {
   const [newMatTitle, setNewMatTitle] = useState('');
   const [newMatUrl, setNewMatUrl] = useState('');
   const [showFinalAssignment, setShowFinalAssignment] = useState(false);
+  const [openSectionAssignment, setOpenSectionAssignment] = useState(null);
   const [autoSyncSlug, setAutoSyncSlug] = useState(false);
   const [slugStatus, setSlugStatus] = useState({ loading: false, valid: null, msg: '' });
   const menuRef = useRef(null);
@@ -370,7 +372,20 @@ export default function CourseEditor() {
             </div>
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-slate-600 mb-1.5">Video giới thiệu (Promo Video URL)</label>
-              <input value={course.promo_video_url || ''} onChange={e => updateField('promo_video_url', e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="https://youtube.com/..." />
+              <input value={course.promo_video_url || ''} onChange={e => updateField('promo_video_url', e.target.value)} onBlur={e => {
+                if (isYouTubeUrl(e.target.value)) {
+                    updateField('promo_video_url', normalizeYouTubeUrl(e.target.value));
+                }
+              }} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-200" placeholder="https://youtube.com/..." />
+              {course.promo_video_url && (
+                <div className="mt-3 bg-black rounded-xl overflow-hidden aspect-video shadow-md max-w-md">
+                    {isYouTubeUrl(course.promo_video_url) || course.promo_video_url.includes('/embed/') ? (
+                      <iframe src={normalizeYouTubeUrl(course.promo_video_url)} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" sandbox="allow-scripts allow-same-origin allow-presentation" allowFullScreen title="promo preview" />
+                    ) : (
+                      <video src={course.promo_video_url} controls className="w-full h-full object-contain" />
+                    )}
+                </div>
+              )}
             </div>
           </div>
           {course.thumbnail && <img src={course.thumbnail} alt="" className="h-32 rounded-xl object-cover border border-slate-200" />}
@@ -471,7 +486,7 @@ export default function CourseEditor() {
             </div>
           )}
         </div>
-        {course.final_assignment_required && (
+        {course.certificate_requires_final_assignment && (
           <div className="mt-4">
             <button onClick={() => setShowFinalAssignment(!showFinalAssignment)} className="px-5 py-2.5 bg-indigo-50 text-indigo-700 font-bold text-sm rounded-xl hover:bg-indigo-100 transition-colors border border-indigo-200">
                {showFinalAssignment ? 'Đóng cấu hình bài tập' : '📝 Cấu hình bài tập cuối khóa'}
@@ -552,6 +567,7 @@ export default function CourseEditor() {
                     <div className="absolute right-0 top-10 w-44 bg-white rounded-xl shadow-xl border border-slate-200 z-50 py-1 animate-fade-in">
                       <button onClick={() => { setEditingSection(section.id); setOpenMenu(null); }} className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50">✏️ Đổi tên</button>
                       <button onClick={() => { addLesson(section.id); setOpenMenu(null); }} className="w-full px-4 py-2 text-left text-sm text-blue-600 hover:bg-blue-50">➕ Thêm bài học</button>
+                      <button onClick={() => { setOpenSectionAssignment(section.id); setOpenMenu(null); }} className="w-full px-4 py-2 text-left text-sm text-indigo-600 hover:bg-indigo-50">📝 Bài tập phần</button>
                       <button onClick={() => { deleteSection(section.id); setOpenMenu(null); }} className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50">🗑️ Xóa phần này</button>
                     </div>
                   )}
@@ -587,8 +603,18 @@ export default function CourseEditor() {
                 {(section.lessons || []).length === 0 && <div className="p-6 text-center text-slate-400 text-sm">Chưa có bài học nào</div>}
               </div>
               </SortableContext>
-              <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100">
+              {openSectionAssignment === section.id && (
+                <div className="w-full border-t border-dashed border-slate-200 p-4 bg-indigo-50/30">
+                  <AssignmentBuilder 
+                    sectionId={section.id} 
+                    courseId={course.id} 
+                    onClose={() => setOpenSectionAssignment(null)} 
+                  />
+                </div>
+              )}
+              <div className="px-5 py-3 bg-slate-50/50 border-t border-slate-100 flex gap-4">
                 <button onClick={() => addLesson(section.id)} className="text-sm font-bold text-blue-600 hover:text-blue-700 transition">+ Thêm bài học vào phần này</button>
+                <button onClick={() => setOpenSectionAssignment(section.id)} className="text-sm font-bold text-indigo-600 hover:text-indigo-700 transition">+ Thêm bài tập phần</button>
               </div>
             </div>
             )}

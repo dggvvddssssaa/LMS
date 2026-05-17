@@ -1,4 +1,5 @@
 const CourseService = require('../services/CourseService');
+const { normalizeYouTubeUrl, isYouTubeUrl, isValidYouTubeUrl } = require('../utils/youtube');
 
 exports.createCourse = async (req, res) => {
   try {
@@ -17,6 +18,13 @@ exports.createCourse = async (req, res) => {
     };
     if (category_ids) {
       courseData.categoryIds = category_ids;
+    }
+    
+    if (courseData.promo_video_url && isYouTubeUrl(courseData.promo_video_url)) {
+      if (!isValidYouTubeUrl(courseData.promo_video_url)) {
+        return res.status(400).json({ success: false, message: 'Invalid YouTube URL for promo video' });
+      }
+      courseData.promo_video_url = normalizeYouTubeUrl(courseData.promo_video_url);
     }
     
     const newCourse = await CourseService.createCourse(courseData, req.user);
@@ -71,6 +79,36 @@ exports.getCourseById = async (req, res) => {
   }
 };
 
+exports.getLearningOutline = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const role = req.user.role;
+    const outline = await CourseService.getLearningOutline(req.params.id, userId);
+    
+    if (role === 'student') {
+      const EnrollmentRepository = require('../repositories/EnrollmentRepository');
+      const isEnrolled = await EnrollmentRepository.checkEnrollment(userId, req.params.id);
+      if (!isEnrolled) {
+        return res.status(403).json({ success: false, message: 'You must be enrolled to view the course content' });
+      }
+    } else if (role === 'instructor') {
+      if (outline.course.instructor_id !== userId) {
+        return res.status(403).json({ success: false, message: 'You do not own this course' });
+      }
+    }
+    
+    res.status(200).json({ success: true, data: outline });
+  } catch (err) {
+    console.error('getLearningOutline Error:', err);
+    res.status(500).json({ 
+      success: false, 
+      code: "LEARNING_OUTLINE_LOAD_FAILED",
+      message: "Không thể tải nội dung khóa học",
+      details: err.message
+    });
+  }
+};
+
 exports.updateCourse = async (req, res) => {
   try {
     const updateData = { ...req.body };
@@ -78,6 +116,14 @@ exports.updateCourse = async (req, res) => {
       updateData.categoryIds = updateData.category_ids;
       delete updateData.category_ids;
     }
+    
+    if (updateData.promo_video_url && isYouTubeUrl(updateData.promo_video_url)) {
+      if (!isValidYouTubeUrl(updateData.promo_video_url)) {
+        return res.status(400).json({ success: false, message: 'Invalid YouTube URL for promo video' });
+      }
+      updateData.promo_video_url = normalizeYouTubeUrl(updateData.promo_video_url);
+    }
+    
     const updatedUser = await CourseService.updateCourse(req.params.id, updateData, req.user);
     res.status(200).json({ success: true, message: 'Course updated', data: updatedUser });
   } catch (err) {

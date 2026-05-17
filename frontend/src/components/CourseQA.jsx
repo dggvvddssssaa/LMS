@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { qaService } from '../services';
 import useAuthStore from '../store/useAuthStore';
 import { useToast } from '../contexts/ToastContext';
@@ -14,9 +14,10 @@ const CourseQA = ({ courseId, activeLessonId }) => {
 
     useEffect(() => {
         fetchQuestions();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [courseId, activeLessonId]);
 
-    const fetchQuestions = async () => {
+    const fetchQuestions = useCallback(async () => {
         try {
             setLoading(true);
             const res = await qaService.getQuestions(courseId, activeLessonId);
@@ -28,7 +29,7 @@ const CourseQA = ({ courseId, activeLessonId }) => {
         } finally {
             setLoading(false);
         }
-    };
+    }, [courseId, activeLessonId, pushToast]);
 
     const handlePostQuestion = async (e) => {
         e.preventDefault();

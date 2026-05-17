@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import httpClient from '../../../../services/core/httpClient';
 import { useToast } from '../../../../contexts/ToastContext';
 
-export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose }) {
+export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFinal, onClose }) {
   const { pushToast } = useToast();
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -17,7 +17,18 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
   
   // MCQ specific payload
   const [questions, setQuestions] = useState([
-    { questionText: '', options: ['', '', '', ''], correctAnswer: 0 }
+    { 
+      id: 'q-init', 
+      question: '', 
+      options: [
+        { id: 'q-init-opt-0', text: '' }, 
+        { id: 'q-init-opt-1', text: '' }, 
+        { id: 'q-init-opt-2', text: '' }, 
+        { id: 'q-init-opt-3', text: '' }
+      ], 
+      correctOptionId: 'q-init-opt-0',
+      explanation: ''
+    }
   ]);
 
   // Essay specific payload
@@ -30,9 +41,14 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
 
   const fetchAssignment = async () => {
     try {
-      const url = isFinal 
-        ? `/assignments/course/${courseId}/final`
-        : `/assignments/lesson/${lessonId}`;
+      let url = '';
+      if (isFinal) {
+        url = `/assignments/course/${courseId}/final`;
+      } else if (sectionId) {
+        url = `/assignments/section/${sectionId}`;
+      } else {
+        url = `/assignments/lesson/${lessonId}`;
+      }
       const res = await httpClient.get(url);
       
       const existing = isFinal ? res.data?.data : (res.data?.data && res.data.data.length > 0 ? res.data.data[0] : null);
@@ -46,7 +62,19 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
         setDeadline(existing.deadline ? new Date(existing.deadline).toISOString().slice(0, 16) : '');
         
         if (existing.kind === 'mcq' && existing.payload?.questions) {
-          setQuestions(existing.payload.questions);
+          const formatted = existing.payload.questions.map((q, idx) => {
+            if (q.options && typeof q.options[0] === 'string') {
+              return {
+                id: q.id || `q-${idx}`,
+                question: q.questionText || q.question || '',
+                options: q.options.map((opt, oIdx) => ({ id: `q-${idx}-opt-${oIdx}`, text: opt })),
+                correctOptionId: `q-${idx}-opt-${q.correctAnswer}`,
+                explanation: q.explanation || ''
+              };
+            }
+            return q;
+          });
+          setQuestions(formatted);
         } else if (existing.kind === 'essay' && existing.payload?.criteria) {
           setEssayCriteria(existing.payload.criteria);
         }
@@ -59,7 +87,19 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
   };
 
   const addQuestion = () => {
-    setQuestions([...questions, { questionText: '', options: ['', '', '', ''], correctAnswer: 0 }]);
+    const qId = `q-${Date.now()}`;
+    setQuestions([...questions, { 
+      id: qId, 
+      question: '', 
+      options: [
+        { id: `${qId}-opt-0`, text: '' }, 
+        { id: `${qId}-opt-1`, text: '' }, 
+        { id: `${qId}-opt-2`, text: '' }, 
+        { id: `${qId}-opt-3`, text: '' }
+      ], 
+      correctOptionId: `${qId}-opt-0`,
+      explanation: ''
+    }]);
   };
 
   const updateQuestion = (qIdx, field, value) => {
@@ -70,7 +110,7 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
 
   const updateOption = (qIdx, oIdx, value) => {
     const updated = [...questions];
-    updated[qIdx].options[oIdx] = value;
+    updated[qIdx].options[oIdx].text = value;
     setQuestions(updated);
   };
 
@@ -86,8 +126,13 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
         ? { questions } 
         : { criteria: essayCriteria };
         
+      let scope = 'lesson';
+      if (isFinal) scope = 'final';
+      else if (sectionId) scope = 'section';
+      
       const data = {
-        lesson_id: isFinal ? null : lessonId,
+        lesson_id: isFinal || sectionId ? null : lessonId,
+        section_id: sectionId || null,
         course_id: courseId,
         title,
         description,
@@ -95,7 +140,7 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
         payload,
         score_max: Number(scoreMax),
         deadline: deadline ? new Date(deadline).toISOString() : null,
-        assignment_scope: isFinal ? 'final' : 'lesson'
+        assignment_scope: scope
       };
 
       if (assignment?.id) {
@@ -219,8 +264,8 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
                   <div className="mb-3 flex items-start gap-3">
                     <span className="w-6 h-6 rounded-md bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-black shrink-0 mt-1">{qIdx + 1}</span>
                     <textarea 
-                      value={q.questionText} 
-                      onChange={e => updateQuestion(qIdx, 'questionText', e.target.value)}
+                      value={q.question} 
+                      onChange={e => updateQuestion(qIdx, 'question', e.target.value)}
                       placeholder="Nội dung câu hỏi..." 
                       className="w-full px-3 py-2 border-b border-dashed border-slate-300 focus:border-indigo-400 focus:outline-none resize-none bg-transparent text-sm font-medium"
                       rows="2"
@@ -229,16 +274,16 @@ export default function AssignmentBuilder({ lessonId, courseId, isFinal, onClose
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pl-9">
                     {q.options.map((opt, oIdx) => (
-                      <div key={oIdx} className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors ${q.correctAnswer === oIdx ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-slate-50'}`}>
+                      <div key={opt.id} className={`flex items-center gap-2 px-3 py-2 border rounded-lg transition-colors ${q.correctOptionId === opt.id ? 'border-green-400 bg-green-50' : 'border-slate-200 bg-slate-50'}`}>
                         <input 
                           type="radio" 
-                          name={`correct-${qIdx}`} 
-                          checked={q.correctAnswer === oIdx}
-                          onChange={() => updateQuestion(qIdx, 'correctAnswer', oIdx)}
+                          name={`correct-${q.id}`} 
+                          checked={q.correctOptionId === opt.id}
+                          onChange={() => updateQuestion(qIdx, 'correctOptionId', opt.id)}
                           className="w-4 h-4 text-green-600 focus:ring-green-500"
                         />
                         <input 
-                          value={opt} 
+                          value={opt.text} 
                           onChange={e => updateOption(qIdx, oIdx, e.target.value)}
                           placeholder={`Lựa chọn ${['A', 'B', 'C', 'D'][oIdx]}`}
                           className="w-full bg-transparent border-none focus:outline-none text-sm"

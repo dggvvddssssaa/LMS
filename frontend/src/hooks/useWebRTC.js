@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as mediasoupClient from 'mediasoup-client';
 import io from 'socket.io-client';
 
+const log = (...args) => { if(import.meta.env.DEV) console.debug(...args); };
+
 const useWebRTC = (roomId, isTeacher) => {
     const [peers, setPeers] = useState([]); // [{ peerId, isTeacher, userName, role, camStream, screenStream, hasVideo, hasAudio }]
     const [localStream, setLocalStream] = useState(null);
@@ -45,7 +47,7 @@ const useWebRTC = (roomId, isTeacher) => {
             const transport = consumerTransportRef.current;
 
             if (!device || !transport) {
-                console.debug(`[WebRTC] Queuing producer ${producerId} (transport not ready)`);
+                log(`[WebRTC] Queuing producer ${producerId} (transport not ready)`);
                 pendingProducersRef.current.push({ producerId, peerId, kind, appData });
                 return;
             }
@@ -53,7 +55,7 @@ const useWebRTC = (roomId, isTeacher) => {
             const { rtpCapabilities } = device;
             const effectiveRoomId = canonicalRoomIdRef.current;
 
-            console.debug(`[WebRTC] Consuming producer ${producerId} from peer ${peerId} (kind=${kind}, source=${appData?.source || 'camera'})`);
+            log(`[WebRTC] Consuming producer ${producerId} from peer ${peerId} (kind=${kind}, source=${appData?.source || 'camera'})`);
 
             const data = await request('consume', {
                 roomId: effectiveRoomId,
@@ -75,7 +77,7 @@ const useWebRTC = (roomId, isTeacher) => {
 
             // Handle server-side producer close (fires when server calls producer.close())
             consumer.on('producerclose', () => {
-                console.debug(`[WebRTC] Consumer producerclose: ${producerId} from ${peerId} kind=${kind} source=${source}`);
+                log(`[WebRTC] Consumer producerclose: ${producerId} from ${peerId} kind=${kind} source=${source}`);
                 consumedProducersRef.current.delete(producerId);
                 consumersRef.current.delete(consumer.id);
                 producerMapRef.current.delete(producerId);
@@ -136,7 +138,7 @@ const useWebRTC = (roomId, isTeacher) => {
             await request('resume', { roomId: effectiveRoomId, consumerId: consumer.id });
             consumer.resume();
 
-            console.debug(`[WebRTC] Consuming OK: ${producerId} kind=${kind} source=${source}`);
+            log(`[WebRTC] Consuming OK: ${producerId} kind=${kind} source=${source}`);
         } catch (err) {
             console.error('[WebRTC] Error consuming producer', producerId, err);
         }
@@ -145,7 +147,7 @@ const useWebRTC = (roomId, isTeacher) => {
     const drainPendingProducers = useCallback(() => {
         const pending = [...pendingProducersRef.current];
         pendingProducersRef.current = [];
-        console.debug(`[WebRTC] Draining ${pending.length} pending producers`);
+        log(`[WebRTC] Draining ${pending.length} pending producers`);
         for (const p of pending) {
             consume(p.producerId, p.peerId, p.kind, p.appData);
         }
@@ -174,7 +176,7 @@ const useWebRTC = (roomId, isTeacher) => {
             });
 
             sendTransport.on('connectionstatechange', (state) => {
-                console.debug(`[WebRTC] Send transport state: ${state}`);
+                log(`[WebRTC] Send transport state: ${state}`);
                 if (state === 'failed') {
                     setError('Kết nối media gửi thất bại');
                     setConnectionState('failed');
@@ -198,7 +200,7 @@ const useWebRTC = (roomId, isTeacher) => {
             });
 
             recvTransport.on('connectionstatechange', (state) => {
-                console.debug(`[WebRTC] Recv transport state: ${state}`);
+                log(`[WebRTC] Recv transport state: ${state}`);
                 if (state === 'connected') {
                     setConnectionState('connected');
                 } else if (state === 'failed') {
@@ -220,7 +222,7 @@ const useWebRTC = (roomId, isTeacher) => {
             const device = new mediasoupClient.Device();
             await device.load({ routerRtpCapabilities });
             deviceRef.current = device;
-            console.debug('[WebRTC] Device loaded');
+            log('[WebRTC] Device loaded');
         } catch (error) {
             console.error('[WebRTC] Device load failed', error);
             setError('Trình duyệt không hỗ trợ WebRTC');
@@ -237,7 +239,7 @@ const useWebRTC = (roomId, isTeacher) => {
         if (!socketRef.current || !producerId) return;
         socketRef.current.emit('closeProducer', { producerId }, (res) => {
             if (res?.error) console.warn('[WebRTC] closeProducer error:', res.error);
-            else console.debug(`[WebRTC] closeProducer OK: ${producerId}`);
+            else log(`[WebRTC] closeProducer OK: ${producerId}`);
         });
     }, []);
 
@@ -255,7 +257,7 @@ const useWebRTC = (roomId, isTeacher) => {
         socketRef.current = socket;
 
         socket.on('connect', () => {
-            console.debug('[WebRTC] Socket connected:', socket.id);
+            log('[WebRTC] Socket connected:', socket.id);
             socket.emit('joinRoom', { roomId }, async (response) => {
                 if (response && response.error) {
                     setError(response.error);
@@ -266,7 +268,7 @@ const useWebRTC = (roomId, isTeacher) => {
 
                 if (canonicalRoomId) {
                     canonicalRoomIdRef.current = canonicalRoomId;
-                    console.debug(`[WebRTC] Canonical room: ${canonicalRoomId}`);
+                    log(`[WebRTC] Canonical room: ${canonicalRoomId}`);
                 }
 
                 if (activePeers) {
@@ -297,7 +299,7 @@ const useWebRTC = (roomId, isTeacher) => {
                 const effectiveRoomId = canonicalRoomIdRef.current;
                 socket.emit('getProducers', { roomId: effectiveRoomId }, (producers) => {
                     if (!Array.isArray(producers)) return;
-                    console.debug(`[WebRTC] ${producers.length} existing producers`);
+                    log(`[WebRTC] ${producers.length} existing producers`);
                     producers.forEach(p => {
                         if (p.peerId !== socket.id) {
                             consume(p.producerId, p.peerId, p.kind, p.appData);
@@ -316,7 +318,7 @@ const useWebRTC = (roomId, isTeacher) => {
         });
 
         socket.on('newProducer', ({ producerId, peerId, kind, appData }) => {
-            console.debug(`[WebRTC] newProducer: ${producerId} from ${peerId} kind=${kind}`);
+            log(`[WebRTC] newProducer: ${producerId} from ${peerId} kind=${kind}`);
             if (peerId !== socket.id) {
                 consume(producerId, peerId, kind, appData);
             }
@@ -324,7 +326,7 @@ const useWebRTC = (roomId, isTeacher) => {
 
         // Handle explicit producerClosed from server (belt-and-suspenders with consumer.on('producerclose'))
         socket.on('producerClosed', ({ peerId, producerId, kind, source }) => {
-            console.debug(`[WebRTC] producerClosed: ${producerId} from ${peerId} kind=${kind} source=${source}`);
+            log(`[WebRTC] producerClosed: ${producerId} from ${peerId} kind=${kind} source=${source}`);
 
             consumedProducersRef.current.delete(producerId);
             producerMapRef.current.delete(producerId);
@@ -348,11 +350,11 @@ const useWebRTC = (roomId, isTeacher) => {
         });
 
         socket.on('producerPaused', ({ peerId, kind, source: _source }) => {
-            console.debug(`[WebRTC] producerPaused: ${peerId} kind=${kind}`);
+            log(`[WebRTC] producerPaused: ${peerId} kind=${kind}`);
         });
 
         socket.on('producerResumed', ({ peerId, kind, source: _source }) => {
-            console.debug(`[WebRTC] producerResumed: ${peerId} kind=${kind}`);
+            log(`[WebRTC] producerResumed: ${peerId} kind=${kind}`);
         });
 
         socket.on('chatMessage', (msg) => {
@@ -360,7 +362,7 @@ const useWebRTC = (roomId, isTeacher) => {
         });
 
         socket.on('newPeer', ({ peerId, isTeacher, userName, role }) => {
-            console.debug(`[WebRTC] newPeer: ${peerId} (${userName})`);
+            log(`[WebRTC] newPeer: ${peerId} (${userName})`);
             setPeers(prev => {
                 if (prev.find(p => p.peerId === peerId)) return prev;
                 return [...prev, {
@@ -377,7 +379,7 @@ const useWebRTC = (roomId, isTeacher) => {
         });
 
         socket.on('peerLeft', ({ peerId }) => {
-            console.debug(`[WebRTC] peerLeft: ${peerId}`);
+            log(`[WebRTC] peerLeft: ${peerId}`);
             // Clean up producer map entries for this peer
             for (const [pid, info] of producerMapRef.current) {
                 if (info.peerId === peerId) {
@@ -389,7 +391,7 @@ const useWebRTC = (roomId, isTeacher) => {
         });
 
         socket.on('disconnect', (reason) => {
-            console.debug(`[WebRTC] Disconnected: ${reason}`);
+            log(`[WebRTC] Disconnected: ${reason}`);
             if (reason === 'io server disconnect' || reason === 'transport close') {
                 setConnectionState('failed');
                 setError('Mất kết nối đến máy chủ');

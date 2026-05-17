@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import { enrollmentService } from '../services';
@@ -19,16 +19,19 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
     const { pushToast } = useToast();
     const navigate = useNavigate();
     const countdownRef = useRef(null);
+    const pollingRef = useRef(null);
 
     useEffect(() => {
         return () => {
             if (countdownRef.current) clearInterval(countdownRef.current);
+            if (pollingRef.current) clearInterval(pollingRef.current);
         };
     }, []);
 
     useEffect(() => {
         if (!isOpen) {
             if (countdownRef.current) clearInterval(countdownRef.current);
+            if (pollingRef.current) clearInterval(pollingRef.current);
             setQrConfig(null);
             setTransactionId(null);
             setPaymentStatus(null);
@@ -38,6 +41,34 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
             setConfirming(false);
         }
     }, [isOpen]);
+
+    useEffect(() => {
+        if (transactionId && paymentStatus === 'pending' && isOpen) {
+            pollingRef.current = setInterval(async () => {
+                try {
+                    const res = await enrollmentService.checkPaymentStatus(transactionId);
+                    if (res.data.status === 'completed') {
+                        clearInterval(pollingRef.current);
+                        setPaymentStatus('confirmed');
+                        if (countdownRef.current) clearInterval(countdownRef.current);
+                        pushToast({ type: 'success', title: 'Thanh toán thành công' });
+                        setTimeout(() => {
+                            navigate(`/course/${res.data.courseId || course.id}/learn`);
+                        }, 1500);
+                    } else if (res.data.status === 'failed') {
+                        clearInterval(pollingRef.current);
+                        setError('Giao dịch đã thất bại. Vui lòng thử lại.');
+                        setPaymentStatus('failed');
+                    }
+                } catch (err) {
+                    console.error('Polling error:', err);
+                }
+            }, 5000);
+        }
+        return () => {
+            if (pollingRef.current) clearInterval(pollingRef.current);
+        };
+    }, [transactionId, paymentStatus, isOpen, course.id, navigate, pushToast]);
 
     if (!isOpen) return null;
 
@@ -81,30 +112,7 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
         }
     };
 
-    const handleConfirmPayment = async () => {
-        if (!transactionId) return;
 
-        try {
-            setConfirming(true);
-            setError('');
-            const res = await enrollmentService.confirmCheckout(transactionId);
-            const data = res.data;
-            setPaymentStatus('confirmed');
-
-            if (countdownRef.current) clearInterval(countdownRef.current);
-            pushToast({ type: 'success', title: 'Thanh toán thành công' });
-
-            setTimeout(() => {
-                navigate(`/course/${data.courseId || course.id}/learn`);
-            }, 1500);
-        } catch (err) {
-            const message = err.message || 'Xác nhận thanh toán thất bại. Vui lòng thử lại.';
-            setError(message);
-            pushToast({ type: 'error', title: 'Xác nhận thất bại', message });
-        } finally {
-            setConfirming(false);
-        }
-    };
 
     const actualPrice = parseFloat(course.sale_price) > 0 ? course.sale_price : course.price;
     const isFree = parseFloat(actualPrice) === 0;
@@ -170,13 +178,13 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
                             ) : (
                                 <div className="mb-4 text-sm text-amber-600 font-semibold">Hết thời gian. Vui lòng tạo giao dịch mới.</div>
                             )}
-                            <button
-                                onClick={handleConfirmPayment}
-                                disabled={confirming || countdown === 0}
-                                className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-500 transition disabled:opacity-50"
-                            >
-                                {confirming ? 'Đang xác nhận...' : 'Xác nhận đã thanh toán'}
-                            </button>
+                            <div className="w-full py-3 bg-amber-100 text-amber-700 font-bold rounded-xl flex justify-center items-center gap-2">
+                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-amber-700" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                                Đang chờ chuyển khoản...
+                            </div>
                         </div>
                     ) : (
                         <button

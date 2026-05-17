@@ -13,6 +13,7 @@ const NotificationBell = () => {
         fetchNotifications();
         const interval = setInterval(fetchNotifications, 60000);
         return () => clearInterval(interval);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {

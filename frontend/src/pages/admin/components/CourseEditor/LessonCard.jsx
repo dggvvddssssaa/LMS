@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import AssignmentBuilder from './AssignmentBuilder';
+import { normalizeYouTubeUrl, isYouTubeUrl } from '../../../../utils/youtube';
 
 function LessonEditForm({ lesson, onSave, onCancel }) {
   const [title, setTitle] = useState(lesson.title || '');
@@ -25,9 +26,17 @@ function LessonEditForm({ lesson, onSave, onCancel }) {
         </div>
       </div>
       <div>
-        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Link Video (Tùy chọn)</label>
-        <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="https://youtube.com/embed/..." />
-        {videoUrl && <div className="mt-3 bg-black rounded-xl overflow-hidden aspect-video shadow-md"><iframe src={videoUrl} className="w-full h-full" allowFullScreen title="preview" /></div>}
+        <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">YouTube URL hoặc Link Video (Tùy chọn)</label>
+        <input value={videoUrl} onChange={e => setVideoUrl(e.target.value)} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-400" placeholder="https://www.youtube.com/watch?v=..." />
+        {videoUrl && (
+          <div className="mt-3 bg-black rounded-xl overflow-hidden aspect-video shadow-md">
+            {isYouTubeUrl(videoUrl) || videoUrl.includes('/embed/') ? (
+              <iframe src={normalizeYouTubeUrl(videoUrl)} className="w-full h-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" sandbox="allow-scripts allow-same-origin allow-presentation" allowFullScreen title="preview" />
+            ) : (
+              <video src={videoUrl} controls className="w-full h-full object-contain" />
+            )}
+          </div>
+        )}
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
@@ -45,7 +54,25 @@ function LessonEditForm({ lesson, onSave, onCancel }) {
       </div>
       <div className="flex gap-3 justify-end pt-2">
         <button onClick={onCancel} className="px-5 py-2.5 text-sm font-bold text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 transition shadow-sm">Hủy</button>
-        <button onClick={() => onSave({ title, video_url: videoUrl, description: desc, content_text: desc, duration, content_type: contentType, is_free_preview: isFreePreview })} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/20">Lưu Thay Đổi</button>
+        <button onClick={() => {
+          const normalizedUrl = isYouTubeUrl(videoUrl) ? normalizeYouTubeUrl(videoUrl) : videoUrl;
+          const savePayload = { 
+            title, 
+            description: desc, 
+            content_text: desc, 
+            duration, 
+            content_type: contentType, 
+            is_free_preview: isFreePreview 
+          };
+          if (contentType === 'video') {
+            savePayload.video_url = normalizedUrl;
+            savePayload.content_url = normalizedUrl;
+          } else {
+            savePayload.video_url = '';
+            savePayload.content_url = videoUrl;
+          }
+          onSave(savePayload);
+        }} className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition shadow-md shadow-blue-500/20">Lưu Thay Đổi</button>
       </div>
     </div>
   );

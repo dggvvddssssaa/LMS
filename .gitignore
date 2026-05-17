@@ -20,3 +20,7 @@ frontend/test-results/
 
 # Reference skills
 SKILLS/
+
+# OpenCode
+.opencode/
+opencode.json.bak

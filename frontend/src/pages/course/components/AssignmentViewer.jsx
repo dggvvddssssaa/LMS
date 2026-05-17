@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import httpClient from '../../../services/core/httpClient';
 import { useToast } from '../../../contexts/ToastContext';
 
-export default function AssignmentViewer({ lessonId }) {
+export default function AssignmentViewer({ lessonId, sectionId, courseId, isFinal }) {
   const { pushToast } = useToast();
   const [assignment, setAssignment] = useState(null);
   const [submission, setSubmission] = useState(null);
@@ -15,18 +15,28 @@ export default function AssignmentViewer({ lessonId }) {
   const [essayAnswer, setEssayAnswer] = useState('');
 
   useEffect(() => {
-    if (lessonId) {
+    if (lessonId || sectionId || isFinal) {
       fetchData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId]);
+  }, [lessonId, sectionId, isFinal, courseId]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const assignRes = await httpClient.get(`/assignments/lesson/${lessonId}`);
-      if (assignRes.data.success && assignRes.data.data.length > 0) {
-        const assign = assignRes.data.data[0];
+      let url = `/assignments/lesson/${lessonId}`;
+      if (isFinal) url = `/assignments/course/${courseId}/final`;
+      else if (sectionId) url = `/assignments/section/${sectionId}`;
+      
+      const assignRes = await httpClient.get(url);
+      let assignData = null;
+      if (assignRes.data.success) {
+         if (isFinal) assignData = assignRes.data.data;
+         else assignData = assignRes.data.data.length > 0 ? assignRes.data.data[0] : null;
+      }
+      
+      if (assignData) {
+        const assign = assignData;
         setAssignment(assign);
         
         // Fetch submission if exists
@@ -55,9 +65,9 @@ export default function AssignmentViewer({ lessonId }) {
     }
   };
 
-  const handleMcqSelect = (qIdx, optIdx) => {
+  const handleMcqSelect = (qId, optId) => {
     if (submission) return; // Prevent changing if already submitted
-    setMcqAnswers(prev => ({ ...prev, [qIdx]: optIdx }));
+    setMcqAnswers(prev => ({ ...prev, [qId]: optId }));
   };
 
   const handleSubmit = async () => {
@@ -114,12 +124,17 @@ export default function AssignmentViewer({ lessonId }) {
               <div key={qIdx} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-indigo-200 transition-colors">
                 <h4 className="font-bold text-slate-800 mb-4 flex gap-2 text-sm md:text-base">
                   <span className="text-indigo-600 shrink-0">Câu {qIdx + 1}:</span>
-                  <span>{q.questionText}</span>
+                  <span>{q.questionText || q.question}</span>
                 </h4>
                 <div className="space-y-2 pl-2 md:pl-10">
                   {q.options.map((opt, oIdx) => {
-                    const isSelected = mcqAnswers[qIdx] === oIdx;
-                    const isCorrect = isSubmitted && q.correctAnswer === oIdx;
+                    const isOldFormat = typeof opt === 'string';
+                    const optId = isOldFormat ? oIdx : opt.id;
+                    const optText = isOldFormat ? opt : opt.text;
+                    const qId = q.id || qIdx;
+                    
+                    const isSelected = mcqAnswers[qId] === optId;
+                    const isCorrect = isSubmitted && (q.correctOptionId !== undefined ? q.correctOptionId === optId : q.correctAnswer === optId);
                     const isWrongSelection = isSubmitted && isSelected && !isCorrect;
                     
                     let bgClass = isSelected ? 'bg-indigo-50 border-indigo-300' : 'bg-slate-50 border-slate-200 hover:bg-slate-100';
@@ -131,9 +146,9 @@ export default function AssignmentViewer({ lessonId }) {
 
                     return (
                       <button
-                        key={oIdx}
+                        key={optId}
                         disabled={isSubmitted}
-                        onClick={() => handleMcqSelect(qIdx, oIdx)}
+                        onClick={() => handleMcqSelect(qId, optId)}
                         className={`w-full text-left px-4 py-3 rounded-xl border transition-all flex items-center gap-3 ${bgClass}`}
                       >
                         <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0
@@ -146,7 +161,7 @@ export default function AssignmentViewer({ lessonId }) {
                           {isWrongSelection && <span className="text-[10px]">✕</span>}
                         </div>
                         <span className={`text-sm ${isSubmitted && isCorrect ? 'text-green-800' : isWrongSelection ? 'text-red-700' : 'text-slate-700'}`}>
-                          {opt}
+                          {optText}
                         </span>
                       </button>
                     );
@@ -179,7 +194,9 @@ export default function AssignmentViewer({ lessonId }) {
           <div className="mt-6 p-4 rounded-xl border border-indigo-100 bg-indigo-50 flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-indigo-900 mb-1">Kết quả bài làm</p>
-              <p className="text-xs text-indigo-700">Trạng thái: {submission.status === 'graded' ? 'Đã chấm điểm' : 'Đang chờ chấm'}</p>
+              <p className={`text-xs font-bold ${submission.status === 'passed' ? 'text-green-600' : submission.status === 'failed' ? 'text-red-600' : 'text-indigo-600'}`}>
+                Trạng thái: {submission.status === 'passed' ? 'Đạt' : submission.status === 'failed' ? 'Không đạt' : submission.status === 'graded' ? 'Đã chấm điểm' : 'Đang chờ chấm'}
+              </p>
             </div>
             <div className="text-right">
               <span className="text-3xl font-black text-indigo-600">{submission.score}</span>

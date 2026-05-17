@@ -15,7 +15,7 @@ router.get('/course/:courseId', verifyToken, certificateController.getCertificat
 // Public: verify certificate by code
 router.get('/verify/:code', certificateController.verifyCertificate);
 
-// Public: view certificate by ID (for sharing)
-router.get('/:id', certificateController.getCertificateById);
+// Admin/Owner: view certificate by ID
+router.get('/:id', verifyToken, certificateController.getCertificateById);
 
 module.exports = router;

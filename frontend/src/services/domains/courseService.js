@@ -1,4 +1,4 @@
-﻿import httpClient from "../core/httpClient";
+import httpClient from "../core/httpClient";
 import { extractApiData } from "../core/apiResult";
 
 export const courseService = {
@@ -12,6 +12,10 @@ export const courseService = {
   },
   async getCategories() {
     const res = await httpClient.get("/categories");
+    return extractApiData(res);
+  },
+  async getLearningOutline(id) {
+    const res = await httpClient.get(`/courses/${id}/learning-outline`);
     return extractApiData(res);
   },
   async getMyCourses() {

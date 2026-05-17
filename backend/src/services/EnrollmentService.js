@@ -2,6 +2,14 @@ const EnrollmentRepository = require('../repositories/EnrollmentRepository');
 
 class EnrollmentService {
   async enroll(userId, courseId) {
+    const CourseRepository = require('../repositories/CourseRepository');
+    const course = await CourseRepository.findById(courseId);
+    if (!course) throw new Error('Course not found');
+    
+    const actualPrice = parseFloat(course.sale_price) > 0 ? parseFloat(course.sale_price) : parseFloat(course.price);
+    if (actualPrice > 0) {
+      throw new Error('Direct enrollment is only allowed for free courses');
+    }
     return await EnrollmentRepository.enroll(userId, courseId);
   }
 
@@ -39,12 +47,12 @@ class EnrollmentService {
          throw new Error('Bank info not configured by admin yet');
       }
 
-      const transactionId = `TXN${Date.now()}${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+      const transactionId = `LMS${Date.now()}${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
 
       // Record pending payment in database
       await db.query(
-        `INSERT INTO payments (student_id, course_id, amount, status, payment_method, transaction_id)
-         VALUES ($1, $2, $3, 'pending', 'bank_transfer', $4)
+        `INSERT INTO payments (student_id, course_id, amount, status, payment_method, transaction_id, provider)
+         VALUES ($1, $2, $3, 'pending', 'bank_transfer', $4, 'sepay')
          ON CONFLICT DO NOTHING`,
         [userId, courseId, actualPrice, transactionId]
       );
@@ -54,9 +62,10 @@ class EnrollmentService {
         amount: actualPrice,
         transactionId,
         vietQrConfig: {
-          bank: bankInfo.bankName || 'Vietcombank',
-          accountNo: bankInfo.accountNumber || '',
-          accountName: bankInfo.accountName || '',
+          bankBin: bankInfo.bankBin || '970422',
+          bankCode: bankInfo.bankCode || 'MB',
+          accountNo: bankInfo.accountNumber || '0867148774',
+          accountName: bankInfo.accountName || 'DINH MINH PHUONG',
           amount: actualPrice,
           description: `${transactionId}`
         }
@@ -65,40 +74,9 @@ class EnrollmentService {
   }
 
   async confirmPayment(transactionId, userId) {
-    const db = require('../config/db');
-
-    // Find the pending payment
-    const { rows } = await db.query(
-      `SELECT * FROM payments WHERE transaction_id = $1 AND student_id = $2`,
-      [transactionId, userId]
-    );
-
-    if (rows.length === 0) {
-      throw new Error('Transaction not found');
-    }
-
-    const payment = rows[0];
-
-    if (payment.status === 'completed') {
-      // Already confirmed — return existing enrollment
-      const enrollment = await EnrollmentRepository.checkEnrollment(userId, payment.course_id);
-      return { status: 'already_confirmed', enrollment };
-    }
-
-    if (payment.status === 'failed') {
-      throw new Error('This transaction has been marked as failed');
-    }
-
-    // Update payment status to completed
-    await db.query(
-      `UPDATE payments SET status = 'completed', updated_at = NOW() WHERE id = $1`,
-      [payment.id]
-    );
-
-    // Auto-enroll the student
-    const enrollment = await EnrollmentRepository.enroll(userId, payment.course_id);
-
-    return { status: 'confirmed', enrollment, courseId: payment.course_id };
+    const error = new Error('Client-side confirmation is disabled. Please wait for automatic verification.');
+    error.statusCode = 410;
+    throw error;
   }
 
   async checkPaymentStatus(transactionId, userId) {

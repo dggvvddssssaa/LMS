@@ -17,4 +17,16 @@ export default defineConfig({
         css: true,
         exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
     },
+    build: {
+        rollupOptions: {
+            output: {
+                manualChunks: {
+                    'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+                    'webrtc-vendor': ['mediasoup-client', 'socket.io-client'],
+                    'editor-vendor': ['@tiptap/react', '@tiptap/starter-kit'],
+                    'dnd-vendor': ['@dnd-kit/core', '@dnd-kit/sortable', '@dnd-kit/utilities']
+                }
+            }
+        }
+    }
 })

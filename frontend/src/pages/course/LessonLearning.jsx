@@ -8,6 +8,7 @@ import httpClient from "../../services/core/httpClient";
 import { ErrorState, LoadingState } from "../../components/ui";
 import AssignmentViewer from "./components/AssignmentViewer";
 import { useToast } from "../../contexts/ToastContext";
+import { normalizeYouTubeUrl, isYouTubeUrl } from "../../utils/youtube";
 
 const LessonLearning = () => {
   const { id } = useParams();
@@ -17,6 +18,7 @@ const LessonLearning = () => {
 
   const [activeLesson, setActiveLesson] = useState(null);
   const [activeSession, setActiveSession] = useState(null);
+  const [activeAssignment, setActiveAssignment] = useState(null);
   const [expandedSections, setExpandedSections] = useState({});
   const [progressData, setProgressData] = useState({ overallProgress: 0, lessons: {} });
   const [sidebarTab, setSidebarTab] = useState("content");
@@ -25,18 +27,38 @@ const LessonLearning = () => {
   const [isGeneratingCert, setIsGeneratingCert] = useState(false);
 
   const { data, loading, error, retry } = useAsyncData(async () => {
-    const courseRes = await courseService.getCourseById(id);
-    const course = courseRes?.data;
-
-    let progress = { overallProgress: 0, lessons: {} };
-    if (user?.role === "student") {
-      try {
-        const progressRes = await enrollmentService.getProgress(id);
-        progress = progressRes?.data || progress;
-      } catch {
-        progress = { overallProgress: 0, lessons: {} };
+    let outline = {};
+    try {
+      const outlineRes = await courseService.getLearningOutline(id);
+      outline = outlineRes?.data || {};
+    } catch (err) {
+      if (err.response?.status === 403) {
+         throw new Error(err.response?.data?.message || "Bạn chưa ghi danh hoặc không có quyền xem khóa học này.");
+      }
+      if (err.response?.status === 401) {
+         throw new Error("Vui lòng đăng nhập để xem nội dung khóa học.");
+      }
+      
+      console.warn("Failed to get learning outline, falling back to basic course data", err);
+      const courseRes = await courseService.getCourseById(id);
+      outline.course = courseRes?.data;
+      outline.sections = outline.course?.sections || [];
+      
+      if (user?.role === "student") {
+        try {
+          const progressRes = await enrollmentService.getProgress(id);
+          outline.progress = progressRes?.data;
+        } catch {
+          outline.progress = { overallProgress: 0, lessons: {} };
+        }
       }
     }
+    
+    const course = outline.course;
+    const progress = outline.progress || { overallProgress: 0, lessons: {} };
+    const outlineSections = outline.sections || [];
+    const finalAssignment = outline.finalAssignment;
+    const certificate = outline.certificate;
 
     let liveClass = null;
     let sessions = [];
@@ -53,38 +75,33 @@ const LessonLearning = () => {
       }
     }
 
-    return { course, progress, liveClass, sessions };
+    return { course, progress, outlineSections, finalAssignment, certificate, liveClass, sessions };
   }, [id, user?.role]);
 
   const course = data?.course || null;
   const sessions = data?.sessions || [];
+  const outlineSections = data?.outlineSections || [];
+  const finalAssignment = data?.finalAssignment || null;
 
-  // Check if student already has a certificate for this course
   useEffect(() => {
-    if (user?.role === 'student' && id) {
-      httpClient.get(`/certificates/course/${id}`)
-        .then(res => {
-          if (res.data.success && res.data.data) {
-            setCertificateData(res.data.data);
-          }
-        })
-        .catch(() => {});
+    if (data?.certificate) {
+      setCertificateData(data.certificate);
     }
-  }, [user, id]);
+  }, [data?.certificate]);
 
   useEffect(() => {
     if (course?.type === 'live' && sessions.length > 0 && !activeSession) {
       // Auto select nearest or first session
       setActiveSession(sessions[0]);
-    } else if (course?.sections?.length) {
-      const firstSection = course.sections[0];
+    } else if (outlineSections?.length) {
+      const firstSection = outlineSections[0];
       setExpandedSections({ [firstSection.id]: true });
       if (firstSection.lessons?.length && !activeLesson) {
         setActiveLesson(firstSection.lessons[0]);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [course, sessions]);
+  }, [course?.type, sessions, outlineSections]);
 
   useEffect(() => {
     if (data?.progress) {
@@ -92,7 +109,7 @@ const LessonLearning = () => {
     }
   }, [data]);
 
-  const sections = useMemo(() => course?.sections || [], [course]);
+  const sections = useMemo(() => outlineSections.length ? outlineSections : (course?.sections || []), [course, outlineSections]);
   const totalLessons = useMemo(() => sections.reduce((sum, section) => sum + (section.lessons?.length || 0), 0), [sections]);
 
   const toggleSection = (sectionId) => {
@@ -233,24 +250,43 @@ const LessonLearning = () => {
       );
     }
 
-    if (!activeLesson) {
+    if (!activeLesson && !activeAssignment) {
       if (course?.type === "live" && !activeSession) {
         return <div className="h-full flex items-center justify-center text-slate-400 text-lg">Chưa có lịch học nào.</div>;
       }
       return <div className="h-full flex items-center justify-center text-slate-400 text-lg">Chọn một bài giảng để bắt đầu.</div>;
     }
+    
+    if (activeAssignment) {
+      if (activeAssignment.type === 'section') {
+         return <div className="h-full overflow-y-auto p-2 md:p-6"><AssignmentViewer sectionId={activeAssignment.id} courseId={id} /></div>;
+      }
+      if (activeAssignment.type === 'final') {
+         return <div className="h-full overflow-y-auto p-2 md:p-6"><AssignmentViewer isFinal={true} courseId={id} /></div>;
+      }
+    }
 
     if (activeLesson.content_type === "video") {
-      const url = activeLesson.content_url || "";
-      if (url.includes("youtube.com") || url.includes("youtu.be") || url.includes("embed")) {
-        const embedUrl = url.includes("watch?v=") ? url.replace("watch?v=", "embed/") : url;
+      const url = activeLesson.content_url || activeLesson.video_url || "";
+      if (!url) {
+        return <div className="h-full flex items-center justify-center text-slate-400 text-lg font-medium">Bài học chưa có video.</div>;
+      }
+      if (isYouTubeUrl(url) || url.includes("embed")) {
+        const embedUrl = normalizeYouTubeUrl(url);
+        if (!embedUrl || embedUrl === url && !url.includes("embed")) {
+           return <div className="h-full flex flex-col items-center justify-center text-slate-400 text-lg gap-3">
+             <p>Không thể tải video trực tiếp.</p>
+             <a href={url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold">Mở trên YouTube</a>
+           </div>;
+        }
         return (
           <iframe
-            className="w-full h-full rounded-2xl"
+            className="w-full h-full rounded-2xl bg-black"
             src={embedUrl}
             title="Video Player"
             frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            sandbox="allow-scripts allow-same-origin allow-presentation"
             allowFullScreen
           />
         );
@@ -416,7 +452,7 @@ const LessonLearning = () => {
                           return (
                             <button
                               key={lesson.id}
-                              onClick={() => { setActiveLesson(lesson); setActiveSession(null); }}
+                              onClick={() => { setActiveLesson(lesson); setActiveSession(null); setActiveAssignment(null); }}
                               className={`w-full text-left p-3 rounded-xl flex items-center gap-3 transition-all mb-1 ${
                                 isActive ? "bg-blue-50 border border-blue-200" : "hover:bg-slate-50 border border-transparent"
                               }`}
@@ -426,16 +462,44 @@ const LessonLearning = () => {
                                   isActive ? "bg-blue-600 text-white" : isCompleted ? "bg-green-100 text-green-600" : "bg-slate-100 text-slate-500"
                                 }`}
                               >
-                                {isActive ? "?" : isCompleted ? "?" : lIdx + 1}
+                                {isActive ? "▶" : isCompleted ? "✓" : lIdx + 1}
                               </div>
                               <h5 className={`text-sm truncate ${isActive ? "font-bold text-slate-800" : "text-slate-700"}`}>{lesson.title}</h5>
                             </button>
                           );
                         })}
+                        {section.assignments && section.assignments.map((assignment) => {
+                          const isAssignActive = activeAssignment?.type === 'section' && activeAssignment?.id === section.id;
+                          return (
+                          <button key={`assign-${assignment.id}`} onClick={() => { setActiveAssignment({ type: 'section', id: section.id }); setActiveLesson(null); setActiveSession(null); }} className={`w-full text-left mt-2 p-3 border rounded-xl flex items-center justify-between transition-all ${isAssignActive ? "bg-indigo-100 border-indigo-300" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100/70"}`}>
+                            <div className="flex items-center gap-3">
+                              <span className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">📝</span>
+                              <div>
+                                <h5 className={`text-sm truncate ${isAssignActive ? 'font-bold text-indigo-900' : 'font-semibold text-indigo-800'}`}>{assignment.title}</h5>
+                                <p className="text-[10px] text-indigo-600 font-medium">Bài tập phần</p>
+                              </div>
+                            </div>
+                          </button>
+                        )})}
                       </div>
                     )}
                   </div>
                 ))}
+                
+                {finalAssignment && (() => {
+                  const isFinalActive = activeAssignment?.type === 'final';
+                  return (
+                  <div className="p-4 border-t border-slate-200 bg-amber-50">
+                    <h4 className="font-bold text-amber-900 mb-3">🎓 Khảo sát / Bài tập cuối khóa</h4>
+                    <button onClick={() => { setActiveAssignment({ type: 'final', courseId: id }); setActiveLesson(null); setActiveSession(null); }} className={`w-full text-left border p-4 rounded-xl flex items-center justify-between shadow-sm transition-all ${isFinalActive ? "bg-amber-100 border-amber-300" : "bg-white border-amber-200 hover:bg-amber-50"}`}>
+                      <div>
+                        <h5 className={`truncate ${isFinalActive ? 'font-bold text-amber-900' : 'font-bold text-slate-800'}`}>{finalAssignment.title}</h5>
+                        <p className="text-xs text-slate-500 mt-1">Hoàn thành để nhận chứng chỉ</p>
+                      </div>
+                      <span className="px-3 py-1 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-lg shrink-0">Bắt buộc</span>
+                    </button>
+                  </div>
+                )})}
                 </>
                 )}
 

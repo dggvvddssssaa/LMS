@@ -72,15 +72,16 @@ class ProgressService {
   }
 
   async checkAndIssueCertificate(userId, courseId, enrollmentId, progressPercent) {
-    if (progressPercent !== 100) return null;
-
-    const courseRes = await db.query('SELECT certificate_enabled, final_assignment_required, final_assignment_pass_percent FROM courses WHERE id = $1', [courseId]);
+    const courseRes = await db.query('SELECT certificate_enabled, certificate_min_progress, certificate_requires_final_assignment, certificate_pass_percent FROM courses WHERE id = $1', [courseId]);
     if (courseRes.rows.length === 0 || !courseRes.rows[0].certificate_enabled) return null;
 
     const course = courseRes.rows[0];
+    const minProgress = course.certificate_min_progress ?? 100;
+    
+    if (progressPercent < minProgress) return null;
 
     // Check final assignment if required
-    if (course.final_assignment_required) {
+    if (course.certificate_requires_final_assignment) {
       const finalAssignRes = await db.query("SELECT id FROM assignments WHERE course_id = $1 AND assignment_scope = 'final' LIMIT 1", [courseId]);
       if (finalAssignRes.rows.length > 0) {
          const finalAssignId = finalAssignRes.rows[0].id;
@@ -88,8 +89,9 @@ class ProgressService {
          if (submissionRes.rows.length === 0) return null; // Not submitted yet
          
          const sub = submissionRes.rows[0];
-         // Depending on how score is calculated. Assume score is percentage (0-100)
-         if (sub.score < (course.final_assignment_pass_percent || 80)) return null; 
+         // Check if status is passed, or if score is sufficient
+         const isPassed = sub.status === 'passed' || sub.status === 'graded';
+         if (!isPassed && sub.score < (course.certificate_pass_percent || 80)) return null; 
       }
     }
 

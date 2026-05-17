@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const MaterialRepository = require('../repositories/MaterialRepository');
 const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
+const { requireCourseOwnership } = require('../middlewares/ownershipMiddleware');
 
 // Get materials for a course (public for enrolled students)
 router.get('/:courseId', verifyToken, async (req, res) => {
@@ -14,7 +15,7 @@ router.get('/:courseId', verifyToken, async (req, res) => {
 });
 
 // Add material (admin/instructor only)
-router.post('/', verifyToken, requireRole('admin', 'instructor'), async (req, res) => {
+router.post('/', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('material'), async (req, res) => {
   try {
     const { course_id, title, file_url, file_type } = req.body;
     if (!course_id || !title || !file_url) {
@@ -28,7 +29,7 @@ router.post('/', verifyToken, requireRole('admin', 'instructor'), async (req, re
 });
 
 // Delete material (admin/instructor only)
-router.delete('/:id', verifyToken, requireRole('admin', 'instructor'), async (req, res) => {
+router.delete('/:id', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('material'), async (req, res) => {
   try {
     const result = await MaterialRepository.delete(req.params.id);
     if (!result) return res.status(404).json({ success: false, message: 'Material not found' });

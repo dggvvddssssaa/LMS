@@ -117,6 +117,79 @@ class CourseService {
     return course;
   }
 
+  async getLearningOutline(courseId, studentId) {
+    const course = await CourseRepository.findById(courseId);
+    if (!course) throw new Error('Course not found');
+
+    const AssignmentRepository = require('../repositories/AssignmentRepository');
+    const ProgressService = require('./ProgressService');
+
+    // sections
+    const sections = await SectionRepository.findByCourseId(courseId);
+    let totalLessons = 0;
+    
+    // progress
+    let progressData = null;
+    if (studentId) {
+       progressData = await ProgressService.getCourseProgress(studentId, courseId).catch(() => null);
+    }
+    
+    for (let section of sections) {
+      section.lessons = await LessonRepository.findBySectionId(section.id);
+      
+      // Get assignments for lessons
+      for (let lesson of section.lessons) {
+         try {
+           lesson.assignments = await AssignmentRepository.getByLesson(lesson.id);
+         } catch(e) {
+           lesson.assignments = [];
+         }
+         totalLessons++;
+      }
+      
+      try {
+        section.assignments = await AssignmentRepository.getBySection(section.id);
+      } catch(e) {
+        section.assignments = [];
+      }
+      
+      // Calculate section progress
+      let sectionCompletedLessons = 0;
+      if (progressData && progressData.lessons) {
+         section.lessons.forEach(l => {
+            if (progressData.lessons[l.id]?.isCompleted) {
+               sectionCompletedLessons++;
+            }
+         });
+      }
+      section.completedLessons = sectionCompletedLessons;
+      section.totalLessons = section.lessons.length;
+      section.progressPercent = section.totalLessons > 0 ? Math.round((sectionCompletedLessons / section.totalLessons) * 100) : 0;
+    }
+    
+    let finalAssignment = null;
+    try {
+      finalAssignment = await AssignmentRepository.getByCourseFinal(courseId);
+    } catch (e) {
+      console.error('Error fetching final assignment:', e.message);
+    }
+
+    // Get certificate info if any
+    let certificate = null;
+    if (studentId) {
+       const certResult = await db.query('SELECT * FROM certificates WHERE user_id = $1 AND course_id = $2', [studentId, courseId]);
+       certificate = certResult.rows[0];
+    }
+    
+    return {
+       course,
+       progress: progressData || { overallProgress: 0, completedLessons: 0, totalLessons },
+       sections,
+       finalAssignment,
+       certificate
+    };
+  }
+
   async updateCourse(id, updateData, user) {
     const course = await CourseRepository.findById(id);
     if (!course) throw new Error('Course not found');

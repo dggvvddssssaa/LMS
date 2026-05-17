@@ -23,6 +23,7 @@ const certificateRoutes = require('./routes/certificateRoutes');
 const materialRoutes = require('./routes/materialRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const certificateTemplateRoutes = require('./routes/certificateTemplateRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/certificates', certificateRoutes);
 app.use('/api/materials', materialRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/certificate-templates', certificateTemplateRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Admin-prefixed routes — dedicated admin routes with mandatory auth
 const adminCourseRoutes = require('./routes/adminCourseRoutes');
