@@ -19,8 +19,9 @@ frontend/dist/
 frontend/test-results/
 
 # Reference skills
-SKILLS/
+/SKILLS/
+
 
 # OpenCode
-.opencode/
 opencode.json.bak
+
