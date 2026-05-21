@@ -5,6 +5,7 @@ const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
 const logger = require('./utils/logger');
 const { errorHandler, notFoundHandler } = require('./middlewares/errorMiddleware');
+const { sanitizeInput } = require('./middlewares/sanitizeMiddleware');
 const authRoutes = require('./routes/authRoutes');
 const courseRoutes = require('./routes/courseRoutes');
 const liveClassRoutes = require('./routes/liveClassRoutes');
@@ -24,6 +25,7 @@ const materialRoutes = require('./routes/materialRoutes');
 const assignmentRoutes = require('./routes/assignmentRoutes');
 const certificateTemplateRoutes = require('./routes/certificateTemplateRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
 
 const app = express();
 
@@ -35,6 +37,7 @@ app.use(cors({
 }));
 app.use(helmet());
 app.use(express.json());
+app.use(sanitizeInput);
 
 // Request Logging
 app.use(morgan('combined', { stream: { write: message => logger.info(message.trim()) } }));
@@ -48,6 +51,27 @@ const apiLimiter = rateLimit({
     message: { error: 'Too many requests, please try again later.' }
 });
 app.use('/api/', apiLimiter);
+
+// Stricter rate limit for auth endpoints
+const authLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000, // 1 minute
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Too many auth attempts, please try again later.' }
+});
+app.use('/api/auth', authLimiter);
+
+// Healthcheck
+app.get('/health', async (req, res) => {
+  try {
+    const prisma = require('./config/prisma');
+    await prisma.$queryRawUnsafe('SELECT 1');
+    res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+  } catch (err) {
+    res.status(503).json({ status: 'error', message: 'Database connection failed' });
+  }
+});
 
 // Routes
 app.get('/', (req, res) => res.send('LMS WebRTC API is running'));
@@ -70,6 +94,7 @@ app.use('/api/materials', materialRoutes);
 app.use('/api/assignments', assignmentRoutes);
 app.use('/api/certificate-templates', certificateTemplateRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/reviews', reviewRoutes);
 
 // Admin-prefixed routes — dedicated admin routes with mandatory auth
 const adminCourseRoutes = require('./routes/adminCourseRoutes');

@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import useAuthStore from '../../store/useAuthStore';
 import { useNavigate } from 'react-router-dom';
 import { statsService } from '../../services';
+import { useToast } from '../../contexts/ToastContext';
 
 const AdminDashboard = () => {
     const { user } = useAuthStore();
     const navigate = useNavigate();
+    const { pushToast } = useToast();
     const [stats, setStats] = useState({
         overview: { totalUsers: 0, totalCourses: 0, totalRevenue: 0 },
         activeLiveClasses: 0,
@@ -27,35 +29,20 @@ const AdminDashboard = () => {
                     setStats(res.data);
                 } else {
                     console.warn('API không trả về success hoặc thiếu data:', res);
-                    setError(res?.message || 'Không thể tải dữ liệu thống kê');
+                    pushToast({ type: 'warning', title: 'Cảnh báo', message: (res?.message) || 'Không thể tải đầy đủ dữ liệu thống kê' });
                 }
             } catch (error) {
                 console.error('Lỗi khi tải dữ liệu thống kê:', error);
-                setError('Có lỗi xảy ra khi kết nối máy chủ');
+                pushToast({ type: 'error', title: 'Lỗi', message: 'Có lỗi xảy ra khi kết nối máy chủ' });
             } finally {
                 setLoading(false);
             }
         };
 
         fetchStats();
-    }, [user, navigate]);
+    }, [user, navigate, pushToast]);
 
     if (loading) return <div className="p-8 text-center text-slate-500 font-medium">Đang tải dữ liệu...</div>;
-
-    if (error) {
-        return (
-            <div className="p-8 text-center space-y-4">
-                <div className="text-red-500 text-xl font-bold">Lỗi tải dữ liệu</div>
-                <div className="text-slate-600">{error}</div>
-                <button 
-                    onClick={() => window.location.reload()}
-                    className="px-4 py-2 bg-slate-800 text-white rounded-lg hover:bg-slate-700 transition-colors"
-                >
-                    Tải lại trang
-                </button>
-            </div>
-        );
-    }
 
     // Default fallbacks in case data is partial to prevent runtime crashes
     const safeOverview = stats?.overview || { totalUsers: 0, totalCourses: 0, totalRevenue: 0 };

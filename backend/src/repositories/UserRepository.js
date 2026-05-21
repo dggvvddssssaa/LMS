@@ -1,81 +1,103 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class UserRepository {
   async findByEmail(email) {
-    const query = 'SELECT * FROM users WHERE email = $1';
-    const result = await db.query(query, [email]);
-    return result.rows[0];
+    return prisma.user.findUnique({ where: { email } });
+  }
+
+  async findByIdWithPassword(id) {
+    return prisma.user.findUnique({ where: { id } });
   }
 
   async findById(id) {
-    const query = 'SELECT id, name, email, role, is_verified, created_at FROM users WHERE id = $1';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.user.findUnique({
+      where: { id },
+      select: { id: true, name: true, email: true, role: true, avatar: true, phone: true, bio: true, is_verified: true, created_at: true }
+    });
+  }
+
+  async update(id, data) {
+    return prisma.user.update({
+      where: { id },
+      data,
+      select: { id: true, name: true, email: true, role: true, avatar: true, phone: true, bio: true, is_verified: true, created_at: true }
+    });
   }
 
   async create(user) {
     const { name, email, password, role } = user;
-    const query = `
-      INSERT INTO users (name, email, password, role)
-      VALUES ($1, $2, $3, $4)
-      RETURNING id, name, email, role, is_verified, created_at
-    `;
-    const result = await db.query(query, [name, email, password, role]);
-    return result.rows[0];
+    return prisma.user.create({
+      data: { name, email, password, role: role || 'student' },
+      select: { id: true, name: true, email: true, role: true, avatar: true, phone: true, bio: true, is_verified: true, created_at: true }
+    });
   }
 
   async updateVerification(id, isVerified) {
-    const query = `
-      UPDATE users SET is_verified = $1
-      WHERE id = $2 RETURNING id, name, email, role, is_verified
-    `;
-    const result = await db.query(query, [isVerified, id]);
-    return result.rows[0];
+    return prisma.user.update({
+      where: { id },
+      data: { is_verified: isVerified },
+      select: { id: true, name: true, email: true, role: true, is_verified: true }
+    });
   }
 
   async updateRoleAndVerification(id, role, isVerified) {
-    const query = `
-      UPDATE users SET role = $1, is_verified = $2
-      WHERE id = $3 RETURNING id, name, email, role, is_verified
-    `;
-    const result = await db.query(query, [role, isVerified, id]);
-    return result.rows[0];
+    return prisma.user.update({
+      where: { id },
+      data: { role, is_verified: isVerified },
+      select: { id: true, name: true, email: true, role: true, is_verified: true }
+    });
   }
 
   async findAllUsers() {
-    const query = 'SELECT id, name, email, role, is_verified, created_at FROM users ORDER BY created_at DESC';
-    const result = await db.query(query);
-    return result.rows;
+    return prisma.user.findMany({
+      select: { id: true, name: true, email: true, role: true, avatar: true, phone: true, bio: true, is_verified: true, created_at: true },
+      orderBy: { created_at: 'desc' }
+    });
   }
 
   async getUserDetails(userId) {
-    // 1. Get basic user info
-    const userQuery = 'SELECT id, name, email, role, is_verified, created_at FROM users WHERE id = $1';
-    const userResult = await db.query(userQuery, [userId]);
-    if (userResult.rows.length === 0) return null;
-    const user = userResult.rows[0];
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, name: true, email: true, role: true, is_verified: true, created_at: true }
+    });
+    if (!user) return null;
 
-    // 2. Get enrolled courses + payment info
-    const coursesQuery = `
-      SELECT c.id, c.title, c.type, e.status as enrollment_status, e.enrolled_at,
-             p.amount as payment_amount, p.status as payment_status
-      FROM enrollments e
-      JOIN courses c ON e.course_id = c.id
-      LEFT JOIN payments p ON p.course_id = c.id AND p.student_id = e.student_id
-      WHERE e.student_id = $1
-      ORDER BY e.enrolled_at DESC
-    `;
-    const coursesResult = await db.query(coursesQuery, [userId]);
-    
-    // 3. Attach courses to user object
-    user.enrolled_courses = coursesResult.rows;
+    const enrollments = await prisma.enrollment.findMany({
+      where: { student_id: userId },
+      select: {
+        id: true,
+        status: true,
+        enrolled_at: true,
+        course: { select: { id: true, title: true, type: true } }
+      },
+      orderBy: { enrolled_at: 'desc' }
+    });
+
+    const payments = await prisma.payment.findMany({
+      where: { student_id: userId },
+      select: { course_id: true, amount: true, status: true }
+    });
+
+    const paymentMap = {};
+    for (const p of payments) {
+      paymentMap[p.course_id] = p;
+    }
+
+    user.enrolled_courses = enrollments.map(e => ({
+      id: e.course.id,
+      title: e.course.title,
+      type: e.course.type,
+      enrollment_status: e.status,
+      enrolled_at: e.enrolled_at,
+      payment_amount: paymentMap[e.course.id]?.amount || null,
+      payment_status: paymentMap[e.course.id]?.status || null
+    }));
+
     return user;
   }
 
   async deleteById(id) {
-    const query = 'DELETE FROM users WHERE id = $1 RETURNING id';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.user.delete({ where: { id }, select: { id: true } });
   }
 }
 

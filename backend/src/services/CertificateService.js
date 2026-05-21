@@ -1,96 +1,86 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 const crypto = require('crypto');
 
 class CertificateService {
   async checkEligibility(userId, courseId) {
-    // 1. Check enrollment exists
-    const enrollCheck = await db.query(
-      'SELECT id FROM enrollments WHERE course_id = $1 AND student_id = $2',
-      [courseId, userId]
-    );
-    if (enrollCheck.rows.length === 0) {
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { student_id_course_id: { student_id: userId, course_id: Number(courseId) } },
+      select: { id: true }
+    });
+    if (!enrollment) {
       return { eligible: false, message: 'Bạn chưa đăng ký khóa học này' };
     }
-    const enrollmentId = enrollCheck.rows[0].id;
 
-    // 2. Check if course has certificate enabled and get settings
-    const courseCheck = await db.query(
-      `SELECT certificate_enabled, certificate_min_progress, certificate_requires_final_assignment, certificate_pass_percent 
-       FROM courses WHERE id = $1`,
-      [courseId]
-    );
-    if (courseCheck.rows.length === 0 || !courseCheck.rows[0].certificate_enabled) {
+    const course = await prisma.course.findUnique({
+      where: { id: Number(courseId) },
+      select: {
+        certificate_enabled: true,
+        certificate_min_progress: true,
+        certificate_requires_final_assignment: true,
+        certificate_pass_percent: true
+      }
+    });
+    if (!course || !course.certificate_enabled) {
       return { eligible: false, message: 'Khóa học này không hỗ trợ cấp chứng chỉ.' };
     }
-    const settings = courseCheck.rows[0];
 
-    // 3. Check progress
-    const progressCheck = await db.query(
-      `SELECT COUNT(DISTINCT l.id) as total_lessons,
-              COUNT(DISTINCT lp.lesson_id) as completed_lessons
-       FROM sections s
-       JOIN lessons l ON l.section_id = s.id
-       LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id AND lp.enrollment_id = $3 AND lp.is_completed = true
-       WHERE s.course_id = $1`,
-      [courseId, userId, enrollmentId]
-    );
+    const [completedCount, totalLessons] = await Promise.all([
+      prisma.lesson_progress.count({
+        where: { enrollment_id: enrollment.id, is_completed: true }
+      }),
+      prisma.lesson.count({
+        where: { section: { course_id: Number(courseId) } }
+      })
+    ]);
 
-    const { total_lessons, completed_lessons } = progressCheck.rows[0];
-    const totalInt = parseInt(total_lessons);
-    const completedInt = parseInt(completed_lessons);
-    
-    let progressPercent = 0;
-    if (totalInt > 0) {
-      progressPercent = (completedInt / totalInt) * 100;
-    } else {
-      progressPercent = 100; // No lessons means 100% complete
-    }
+    const totalInt = totalLessons;
+    const completedInt = completedCount;
+    const progressPercent = totalInt > 0 ? (completedInt / totalInt) * 100 : 100;
 
-    const minProgress = settings.certificate_min_progress || 100;
+    const minProgress = course.certificate_min_progress || 100;
     if (progressPercent < minProgress) {
-      return { 
-        eligible: false, 
-        message: `Bạn mới hoàn thành ${Math.round(progressPercent)}% (${completedInt}/${totalInt} bài học). Cần hoàn thành tối thiểu ${minProgress}% để nhận chứng chỉ.` 
+      return {
+        eligible: false,
+        message: `Bạn mới hoàn thành ${Math.round(progressPercent)}% (${completedInt}/${totalInt} bài học). Cần hoàn thành tối thiểu ${minProgress}% để nhận chứng chỉ.`
       };
     }
 
-    // 4. Check final assignment if required
-    if (settings.certificate_requires_final_assignment) {
-      const passPercent = settings.certificate_pass_percent || 80;
-      const assignmentCheck = await db.query(
-        `SELECT a.id, s.score, s.status, a.score_max
-         FROM assignments a
-         LEFT JOIN assignment_submissions s ON s.assignment_id = a.id AND s.student_id = $2
-         WHERE a.course_id = $1 AND a.assignment_scope = 'final'
-         ORDER BY a.created_at DESC LIMIT 1`,
-        [courseId, userId]
-      );
-      
-      if (assignmentCheck.rows.length === 0) {
+    if (course.certificate_requires_final_assignment) {
+      const passPercent = course.certificate_pass_percent || 80;
+      const finalAssignment = await prisma.assignments.findFirst({
+        where: { course_id: Number(courseId), assignment_scope: 'final' },
+        orderBy: { created_at: 'desc' },
+        select: { id: true, score_max: true }
+      });
+
+      if (!finalAssignment) {
         return { eligible: false, message: 'Khóa học này yêu cầu bài kiểm tra cuối khóa nhưng chưa có bài kiểm tra nào được cấu hình.' };
       }
-      
-      const finalA = assignmentCheck.rows[0];
-      if (!finalA.status || (finalA.status !== 'graded' && finalA.status !== 'passed')) {
+
+      const submission = await prisma.assignment_submissions.findFirst({
+        where: { assignment_id: finalAssignment.id, student_id: userId },
+        select: { score: true, status: true }
+      });
+
+      if (!submission || (submission.status !== 'graded' && submission.status !== 'passed')) {
         return { eligible: false, message: 'Bạn chưa hoàn thành hoặc chưa được chấm điểm bài kiểm tra cuối khóa (chưa đạt).' };
       }
-      
-      const actualPercent = (finalA.score / (finalA.score_max || 100)) * 100;
+
+      const actualPercent = (submission.score / (finalAssignment.score_max || 100)) * 100;
       if (actualPercent < passPercent) {
         return { eligible: false, message: `Điểm bài kiểm tra cuối khóa của bạn là ${actualPercent}%. Cần đạt tối thiểu ${passPercent}%.` };
       }
     }
 
-    // 5. Check if certificate already exists
-    const existingCert = await db.query(
-      'SELECT id, certificate_code FROM certificates WHERE course_id = $1 AND user_id = $2',
-      [courseId, userId]
-    );
-    if (existingCert.rows.length > 0) {
-      return { eligible: true, alreadyIssued: true, certificateId: existingCert.rows[0].id };
+    const existingCert = await prisma.certificates.findFirst({
+      where: { course_id: Number(courseId), user_id: userId },
+      select: { id: true }
+    });
+    if (existingCert) {
+      return { eligible: true, alreadyIssued: true, certificateId: existingCert.id };
     }
 
-    return { eligible: true, enrollmentId };
+    return { eligible: true, enrollmentId: enrollment.id };
   }
 
   generateCertificateCode(userId, courseId) {
@@ -100,57 +90,65 @@ class CertificateService {
 
   async issueCertificate(userId, courseId) {
     const eligibility = await this.checkEligibility(userId, courseId);
-    if (!eligibility.eligible) {
-      throw new Error(eligibility.message);
-    }
-    
-    if (eligibility.alreadyIssued) {
-      return await this.getCertificateDetails(eligibility.certificateId);
-    }
+    if (!eligibility.eligible) throw new Error(eligibility.message);
+    if (eligibility.alreadyIssued) return this.getCertificateDetails(eligibility.certificateId);
 
-    // Get snapshot data
-    const snapshotQuery = await db.query(
-      `SELECT u.name as student_name, u.email as student_email,
-              c.title as course_title, c.certificate_template_id,
-              i.name as instructor_name
-       FROM users u, courses c
-       LEFT JOIN users i ON c.instructor_id = i.id
-       WHERE u.id = $1 AND c.id = $2`,
-      [userId, courseId]
-    );
-    
-    const snap = snapshotQuery.rows[0];
+    const [user, course] = await Promise.all([
+      prisma.user.findUnique({ where: { id: userId }, select: { name: true, email: true } }),
+      prisma.course.findUnique({
+        where: { id: Number(courseId) },
+        select: { title: true, certificate_template_id: true, instructor: { select: { name: true } } }
+      })
+    ]);
+
     const code = this.generateCertificateCode(userId, courseId);
     const verifyUrl = `/verify-certificate/${code}`;
     const issuedDateText = new Date().toLocaleDateString('vi-VN');
 
-    // Insert certificate
-    const insertResult = await db.query(
-      `INSERT INTO certificates (
-        certificate_code, enrollment_id, user_id, course_id, template_id,
-        student_name_snapshot, student_email_snapshot, course_title_snapshot,
-        instructor_name_snapshot, issued_date_text, verify_url, status
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-      [
-        code, eligibility.enrollmentId, userId, courseId, snap.certificate_template_id,
-        snap.student_name, snap.student_email, snap.course_title,
-        snap.instructor_name, issuedDateText, verifyUrl, 'issued'
-      ]
-    );
+    const result = await prisma.certificates.create({
+      data: {
+        certificate_code: code,
+        enrollment_id: eligibility.enrollmentId,
+        user_id: userId,
+        course_id: Number(courseId),
+        template_id: course?.certificate_template_id || null,
+        student_name_snapshot: user?.name || null,
+        student_email_snapshot: user?.email || null,
+        course_title_snapshot: course?.title || null,
+        instructor_name_snapshot: course?.instructor?.name || null,
+        issued_date_text: issuedDateText,
+        verify_url: verifyUrl,
+        status: 'issued'
+      }
+    });
 
-    return await this.getCertificateDetails(insertResult.rows[0].id);
+    return this.getCertificateDetails(result.id);
   }
 
   async getCertificateDetails(certId) {
-    const { rows } = await db.query(
-      `SELECT c.*, t.layout_json, t.background_url, t.logo_url, t.seal_url, t.signature_url,
-              t.issuer_name, t.issuer_title, t.representative_name, t.representative_title
-       FROM certificates c
-       LEFT JOIN certificate_templates t ON c.template_id = t.id
-       WHERE c.id = $1`,
-      [certId]
-    );
-    return rows[0];
+    const cert = await prisma.certificates.findUnique({
+      where: { id: Number(certId) }
+    });
+    if (!cert) return null;
+
+    if (cert.template_id) {
+      const template = await prisma.certificate_templates.findUnique({
+        where: { id: cert.template_id }
+      });
+      if (template) {
+        cert.layout_json = template.layout_json;
+        cert.background_url = template.background_url;
+        cert.logo_url = template.logo_url;
+        cert.seal_url = template.seal_url;
+        cert.signature_url = template.signature_url;
+        cert.issuer_name = template.issuer_name;
+        cert.issuer_title = template.issuer_title;
+        cert.representative_name = template.representative_name;
+        cert.representative_title = template.representative_title;
+      }
+    }
+
+    return cert;
   }
 }
 

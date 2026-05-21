@@ -1,5 +1,5 @@
 const AssignmentRepository = require('../repositories/AssignmentRepository');
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 const sanitizeAssignments = (assignments, user) => {
   const isAdminOrInstructor = user.role === 'admin' || user.role === 'instructor';
@@ -28,32 +28,38 @@ const sanitizeAssignments = (assignments, user) => {
 const resolveCourseIdForAssignment = async (id, body) => {
   if (body && body.course_id) return body.course_id;
   if (id) {
-    const { rows } = await db.query('SELECT course_id, lesson_id, section_id FROM assignments WHERE id = $1', [id]);
-    if (rows.length > 0) {
-      if (rows[0].course_id) return rows[0].course_id;
-      if (rows[0].lesson_id) {
-         const lr = await db.query('SELECT section_id FROM lessons WHERE id = $1', [rows[0].lesson_id]);
-         if (lr.rows.length > 0) {
-            const sr = await db.query('SELECT course_id FROM sections WHERE id = $1', [lr.rows[0].section_id]);
-            if (sr.rows.length > 0) return sr.rows[0].course_id;
-         }
+    const assignment = await prisma.assignments.findUnique({
+      where: { id: Number(id) },
+      include: {
+        lessons: { include: { section: true } },
+        sections: true
       }
-      if (rows[0].section_id) {
-         const sr = await db.query('SELECT course_id FROM sections WHERE id = $1', [rows[0].section_id]);
-         if (sr.rows.length > 0) return sr.rows[0].course_id;
+    });
+    if (assignment) {
+      if (assignment.course_id) return Number(assignment.course_id);
+      if (assignment.lessons && assignment.lessons.section) {
+        return Number(assignment.lessons.section.course_id);
+      }
+      if (assignment.sections) {
+        return Number(assignment.sections.course_id);
       }
     }
   }
   if (body && body.lesson_id) {
-     const lr = await db.query('SELECT section_id FROM lessons WHERE id = $1', [body.lesson_id]);
-     if (lr.rows.length > 0) {
-        const sr = await db.query('SELECT course_id FROM sections WHERE id = $1', [lr.rows[0].section_id]);
-        if (sr.rows.length > 0) return sr.rows[0].course_id;
-     }
+    const lesson = await prisma.lesson.findUnique({
+      where: { id: Number(body.lesson_id) },
+      include: { section: true }
+    });
+    if (lesson && lesson.section) {
+      return Number(lesson.section.course_id);
+    }
   }
   if (body && body.section_id) {
-     const sr = await db.query('SELECT course_id FROM sections WHERE id = $1', [body.section_id]);
-     if (sr.rows.length > 0) return sr.rows[0].course_id;
+    const section = await prisma.section.findUnique({
+      where: { id: Number(body.section_id) },
+      select: { course_id: true }
+    });
+    if (section) return Number(section.course_id);
   }
   return null;
 };
@@ -61,8 +67,11 @@ const resolveCourseIdForAssignment = async (id, body) => {
 const checkCourseOwnership = async (courseId, user) => {
   if (user.role === 'admin') return true;
   if (!courseId) return true; // If we can't resolve, let it pass or fail later
-  const { rows } = await db.query('SELECT instructor_id FROM courses WHERE id = $1', [courseId]);
-  if (rows.length === 0 || rows[0].instructor_id !== user.id) {
+  const course = await prisma.course.findUnique({
+    where: { id: Number(courseId) },
+    select: { instructor_id: true }
+  });
+  if (!course || course.instructor_id !== user.id) {
     const err = new Error('Forbidden: You do not own this course');
     err.statusCode = 403;
     throw err;
@@ -146,20 +155,21 @@ exports.submitAssignment = async (req, res) => {
     
     if (assignment.kind === 'mcq' && assignment.payload && assignment.payload.questions) {
       const questions = assignment.payload.questions;
-      let correctCount = 0;
+      let earnedPoints = 0;
+      const scoreMax = assignment.score_max || 100;
       
-      // Compute score
       questions.forEach((q, idx) => {
-        const qId = q.id || idx;
+        const qId = q.id || String(idx);
         const correctOpt = q.correctOptionId !== undefined ? q.correctOptionId : q.correctAnswer;
         if (answers && answers[qId] === correctOpt) {
-          correctCount++;
+          // Use per-question points if available, otherwise divide evenly
+          earnedPoints += (q.points || Math.round(scoreMax / questions.length));
         }
       });
       
-      score = Math.round((correctCount / questions.length) * (assignment.score_max || 100));
+      score = earnedPoints;
       const passPercent = assignment.pass_percent || 80;
-      const isPassed = score >= (assignment.score_max || 100) * (passPercent / 100);
+      const isPassed = score >= scoreMax * (passPercent / 100);
       status = isPassed ? 'passed' : 'failed';
     }
     

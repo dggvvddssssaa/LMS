@@ -1,4 +1,5 @@
 const os = require('os');
+const logger = require('../utils/logger');
 
 function getLocalIp() {
     const interfaces = os.networkInterfaces();
@@ -16,7 +17,7 @@ const listenIp = process.env.MEDIASOUP_LISTEN_IP || '0.0.0.0';
 const announcedIp = process.env.MEDIASOUP_ANNOUNCED_IP || getLocalIp();
 
 // Log effective config at startup
-console.log(`[mediasoup config] listenIp=${listenIp}, announcedIp=${announcedIp}, ports=${process.env.MEDIASOUP_MIN_PORT || 40000}-${process.env.MEDIASOUP_MAX_PORT || 40100}`);
+logger.info(`[mediasoup config] listenIp=${listenIp}, announcedIp=${announcedIp}, ports=${process.env.MEDIASOUP_MIN_PORT || 40000}-${process.env.MEDIASOUP_MAX_PORT || 40100}`);
 
 module.exports = {
     // Worker settings

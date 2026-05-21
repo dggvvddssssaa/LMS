@@ -1,4 +1,4 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 const EnrollmentRepository = require('../repositories/EnrollmentRepository');
 
 exports.sepayWebhook = async (req, res) => {
@@ -10,18 +10,13 @@ exports.sepayWebhook = async (req, res) => {
 
     const payload = req.body;
     
-    // SePay Webhook Payload Example:
-    // { id: 123, gateway: 'MBBank', transactionDate: '...', accountNumber: '0867148774', subAccount: null,
-    //   code: '...', content: 'LMS1234567', transferType: 'in', transferAmount: 10000, accumulated: 50000,
-    //   referenceCode: 'MB...' }
-
     if (payload.transferType !== 'in') {
       return res.status(200).json({ success: true, message: 'Ignored outbound transaction' });
     }
 
-    const { rows: settingsRows } = await db.query("SELECT value FROM global_settings WHERE key = 'bank_info'");
-    const bankInfo = settingsRows.length > 0 ? settingsRows[0].value : null;
-    const expectedAccount = bankInfo ? bankInfo.accountNumber : '0867148774';
+    const setting = await prisma.global_settings.findUnique({ where: { key: 'bank_info' } });
+    const bankInfo = setting ? setting.value : null;
+    const expectedAccount = bankInfo && bankInfo.accountNumber ? bankInfo.accountNumber : '0867148774';
 
     if (payload.accountNumber !== expectedAccount) {
       return res.status(200).json({ success: true, message: 'Ignored transaction for different account' });
@@ -34,49 +29,81 @@ exports.sepayWebhook = async (req, res) => {
     }
     const transactionId = match[0].toUpperCase();
 
-    // Check payment in db
-    const { rows } = await db.query('SELECT * FROM payments WHERE transaction_id = $1', [transactionId]);
-    if (rows.length === 0) {
-      return res.status(200).json({ success: true, message: 'Payment not found' });
-    }
+    // Use Prisma transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      // Check payment in db
+      const payment = await tx.payment.findFirst({ where: { transaction_id: transactionId } });
+      if (!payment) {
+        throw new Error('Payment not found');
+      }
 
-    const payment = rows[0];
+      // Check if event already processed
+      if (payment.provider_event_id === String(payload.id)) {
+        throw new Error('Event already processed');
+      }
 
-    // Check if event already processed
-    if (payment.provider_event_id === String(payload.id)) {
-       return res.status(200).json({ success: true, message: 'Event already processed' });
-    }
+      if (payment.status === 'completed') {
+        throw new Error('Payment already completed');
+      }
 
-    if (payment.status === 'completed') {
-       return res.status(200).json({ success: true, message: 'Payment already completed' });
-    }
+      if (parseFloat(payload.transferAmount) < parseFloat(payment.amount)) {
+        throw new Error('Amount mismatch: transferred amount is less than required');
+      }
 
-    if (parseFloat(payment.amount) !== parseFloat(payload.transferAmount)) {
-       // amount mismatch
-       return res.status(200).json({ success: true, message: 'Amount mismatch' });
-    }
+      // Update payment
+      await tx.payment.update({
+        where: { id: Number(payment.id) },
+        data: {
+          status: 'completed',
+          provider_event_id: String(payload.id),
+          provider_reference_code: payload.referenceCode || payload.code,
+          provider_payload: payload,
+          paid_at: new Date(),
+          updated_at: new Date()
+        }
+      });
 
-    // Update payment
-    await db.query(
-      `UPDATE payments 
-       SET status = 'completed', 
-           provider_event_id = $1, 
-           provider_reference_code = $2, 
-           provider_payload = $3, 
-           paid_at = NOW(), 
-           updated_at = NOW() 
-       WHERE id = $4`,
-      [String(payload.id), payload.referenceCode || payload.code, JSON.stringify(payload), payment.id]
-    );
+      // Check enrollment existence, if not exists, create it
+      const existingEnrollment = await tx.enrollment.findUnique({
+        where: { student_id_course_id: { student_id: payment.student_id, course_id: payment.course_id } }
+      });
 
-    // Enroll student
-    await EnrollmentRepository.enroll(payment.student_id, payment.course_id);
+      if (existingEnrollment) {
+        if (existingEnrollment.status !== 'active') {
+          await tx.enrollment.update({
+            where: { id: existingEnrollment.id },
+            data: { status: 'active', enrolled_at: new Date() }
+          });
+        }
+      } else {
+        await tx.enrollment.create({
+          data: {
+            student_id: payment.student_id,
+            course_id: payment.course_id,
+            status: 'active',
+            progress: 0,
+            enrolled_at: new Date()
+          }
+        });
+      }
+      
+      // Create notification
+      await tx.notifications.create({
+        data: {
+          user_id: payment.student_id,
+          message: `Thanh toán thành công cho mã giao dịch ${transactionId}. Bạn đã được ghi danh vào khóa học.`,
+          type: 'payment',
+          is_read: false
+        }
+      });
+    });
 
     return res.status(200).json({ success: true });
   } catch (err) {
     console.error('SePay Webhook Error:', err);
-    // Return 200 anyway so SePay doesn't retry unnecessarily if it's a systemic error, 
-    // or return 500 if we DO want retry. We'll return 500 to allow retry for DB errors.
+    if (err.message === 'Payment not found' || err.message === 'Event already processed' || err.message === 'Payment already completed' || err.message.startsWith('Amount mismatch')) {
+       return res.status(200).json({ success: true, message: err.message });
+    }
     res.status(500).json({ success: false, message: 'Internal server error' });
   }
 };

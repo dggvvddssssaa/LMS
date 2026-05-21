@@ -2,7 +2,7 @@ const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
 const logger = require("../utils/logger");
 const RoomManager = require("./roomManager");
-const SessionModel = require("../models/sessionModel");
+const SessionRepository = require("../repositories/SessionRepository");
 const EnrollmentRepository = require("../repositories/EnrollmentRepository");
 const { getJwtSecret } = require("../utils/jwtSecret");
 const { normalizeRole } = require("../utils/roles");
@@ -62,9 +62,9 @@ const initSocket = (httpServer, workers) => {
                 if (err) return callback({ error: err });
 
                 // Resolve session — always use meeting_id as canonical room ID
-                let session = await SessionModel.getByMeetingId(roomId);
+                let session = await SessionRepository.findByMeetingId(roomId);
                 if (!session) {
-                    session = await SessionModel.getById(roomId);
+                    session = await SessionRepository.findById(roomId);
                 }
                 if (!session) {
                     return callback({ error: "Phòng học không tồn tại." });
@@ -116,7 +116,7 @@ const initSocket = (httpServer, workers) => {
 
                 // Record attendance
                 try {
-                    await SessionModel.recordJoin(session.id, socket.user.id);
+                    await SessionRepository.recordJoin(session.id, socket.user.id);
                 } catch (e) {
                     logger.warn(`Attendance record failed: ${e.message}`);
                 }
@@ -370,7 +370,7 @@ const initSocket = (httpServer, workers) => {
 
             // Record leave attendance
             if (mapping) {
-                SessionModel.recordLeave(mapping.sessionId, mapping.userId)
+                SessionRepository.recordLeave(mapping.sessionId, mapping.userId)
                     .catch(e => logger.warn(`Attendance leave record failed: ${e.message}`));
 
                 // Notify peers in canonical room

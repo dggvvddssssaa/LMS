@@ -9,6 +9,27 @@ class UserService {
     return user;
   }
 
+  async updateProfile(userId, data) {
+    const allowed = {};
+    if (data.name !== undefined) allowed.name = data.name;
+    if (data.phone !== undefined) allowed.phone = data.phone;
+    if (data.bio !== undefined) allowed.bio = data.bio;
+    if (data.avatar !== undefined) allowed.avatar = data.avatar;
+    return UserRepository.update(userId, allowed);
+  }
+
+  async changePassword(userId, currentPassword, newPassword) {
+    const user = await UserRepository.findByIdWithPassword(userId);
+    if (!user) throw new Error('User not found');
+
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) throw new Error('Mật khẩu hiện tại không đúng');
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await UserRepository.update(userId, { password: hashed });
+    return { message: 'Đã đổi mật khẩu thành công' };
+  }
+
   async getAllUsers() {
     return await UserRepository.findAllUsers();
   }

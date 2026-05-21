@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import useAuthStore from '../../store/useAuthStore';
 import { authService } from '../../services';
 
@@ -8,6 +8,7 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const navigate = useNavigate();
+    const location = useLocation();
     const login = useAuthStore(state => state.login);
 
     const handleSubmit = async (e) => {
@@ -24,7 +25,10 @@ const Login = () => {
             }
 
             login(user, token);
-            navigate('/dashboard');
+            const searchParams = new URLSearchParams(location.search);
+            const fromQuery = searchParams.get('from');
+            const from = location.state?.from || fromQuery || '/dashboard';
+            navigate(from, { replace: true });
         } catch (err) {
             setError(err.message || 'Đăng nhập thất bại');
         }

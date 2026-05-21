@@ -2,6 +2,8 @@ const express = require('express');
 const router = express.Router();
 const courseController = require('../controllers/courseController');
 const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
+const { validate } = require('../middlewares/validateMiddleware');
+const { createCourseSchema, updateCourseSchema, courseFilters } = require('../validators/courseValidators');
 
 // All admin course routes require authentication + admin/instructor role
 router.use(verifyToken, requireRole('admin', 'instructor'));
@@ -17,10 +19,10 @@ router.post('/slug/suggest', courseController.suggestSlug);
 router.get('/:id', courseController.getAdminCourseById);
 
 // Create
-router.post('/', courseController.createCourse);
+router.post('/', validate(createCourseSchema), courseController.createCourse);
 
 // Update
-router.put('/:id', courseController.updateCourse);
+router.put('/:id', validate(updateCourseSchema), courseController.updateCourse);
 
 // Delete
 router.delete('/:id', courseController.deleteCourse);

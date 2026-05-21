@@ -9,6 +9,25 @@ exports.getProfile = async (req, res) => {
   }
 };
 
+exports.updateProfile = async (req, res) => {
+  try {
+    const user = await UserService.updateProfile(req.user.id, req.body);
+    res.json({ success: true, data: user });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const result = await UserService.changePassword(req.user.id, currentPassword, newPassword);
+    res.json({ success: true, message: result.message });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await UserService.getAllUsers();

@@ -3,7 +3,7 @@ const QAService = require('../services/QAService');
 exports.getQuestions = async (req, res) => {
   try {
     const { lessonId } = req.query;
-    const questions = await QAService.getQuestions(req.params.courseId, lessonId);
+    const questions = await QAService.getQuestions(req.params.courseId, lessonId, req.user.id);
     res.status(200).json({ success: true, data: questions });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -34,6 +34,16 @@ exports.acceptAnswer = async (req, res) => {
   try {
     const answer = await QAService.acceptAnswer(req.user.id, req.params.id);
     res.status(200).json({ success: true, data: answer });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
+exports.toggleReaction = async (req, res) => {
+  try {
+    const { targetType, targetId, emoji } = req.body;
+    const result = await QAService.toggleReaction(req.user.id, targetType, targetId, emoji);
+    res.status(200).json({ success: true, data: result });
   } catch (err) {
     res.status(400).json({ success: false, message: err.message });
   }

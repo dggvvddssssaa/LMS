@@ -1,16 +1,24 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 const CertificateService = require('../services/CertificateService');
 
 exports.getMyCertificates = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT id, certificate_url, pdf_url, issued_at, course_id, 
-              course_title_snapshot as course_title, verify_url, status
-       FROM certificates
-       WHERE user_id = $1
-       ORDER BY issued_at DESC`,
-      [req.user.id]
-    );
+    const certs = await prisma.certificates.findMany({
+      where: { user_id: req.user.id },
+      select: {
+        id: true,
+        certificate_url: true,
+        pdf_url: true,
+        issued_at: true,
+        course_id: true,
+        course_title_snapshot: true,
+        verify_url: true,
+        status: true
+      },
+      orderBy: { issued_at: 'desc' }
+    });
+    // Map course_title_snapshot to course_title for frontend compat
+    const rows = certs.map(c => ({ ...c, course_title: c.course_title_snapshot }));
     res.status(200).json({ success: true, data: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -34,14 +42,14 @@ exports.getCertificateById = async (req, res) => {
 
 exports.getCertificateByCourse = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT id FROM certificates WHERE course_id = $1 AND user_id = $2`,
-      [req.params.courseId, req.user.id]
-    );
-    if (rows.length === 0) return res.status(200).json({ success: true, data: null });
+    const cert = await prisma.certificates.findFirst({
+      where: { course_id: Number(req.params.courseId), user_id: req.user.id },
+      select: { id: true }
+    });
+    if (!cert) return res.status(200).json({ success: true, data: null });
     
-    const cert = await CertificateService.getCertificateDetails(rows[0].id);
-    res.status(200).json({ success: true, data: cert });
+    const fullCert = await CertificateService.getCertificateDetails(cert.id);
+    res.status(200).json({ success: true, data: fullCert });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -64,22 +72,22 @@ exports.generateCertificate = async (req, res) => {
 exports.verifyCertificate = async (req, res) => {
   try {
     const { code } = req.params;
-    const { rows } = await db.query(
-      `SELECT id FROM certificates WHERE certificate_code = $1`,
-      [code]
-    );
+    const cert = await prisma.certificates.findFirst({
+      where: { certificate_code: code },
+      select: { id: true }
+    });
     
-    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Certificate not found' });
+    if (!cert) return res.status(404).json({ success: false, message: 'Certificate not found' });
     
-    const cert = await CertificateService.getCertificateDetails(rows[0].id);
+    const fullCert = await CertificateService.getCertificateDetails(cert.id);
     
     // Filter PII and internals
-    delete cert.student_email_snapshot;
-    delete cert.metadata_json;
-    delete cert.enrollment_id;
-    delete cert.user_id;
+    delete fullCert.student_email_snapshot;
+    delete fullCert.metadata_json;
+    delete fullCert.enrollment_id;
+    delete fullCert.user_id;
 
-    res.status(200).json({ success: true, data: cert });
+    res.status(200).json({ success: true, data: fullCert });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

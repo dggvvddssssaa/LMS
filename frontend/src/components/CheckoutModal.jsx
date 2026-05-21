@@ -8,7 +8,6 @@ const PAYMENT_TIMEOUT = 15 * 60;
 
 const CheckoutModal = ({ course, isOpen, onClose }) => {
     const [loading, setLoading] = useState(false);
-    const [confirming, setConfirming] = useState(false);
     const [qrConfig, setQrConfig] = useState(null);
     const [transactionId, setTransactionId] = useState(null);
     const [paymentStatus, setPaymentStatus] = useState(null);
@@ -38,13 +37,16 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
             setError('');
             setCountdown(PAYMENT_TIMEOUT);
             setLoading(false);
-            setConfirming(false);
         }
     }, [isOpen]);
 
     useEffect(() => {
         if (transactionId && paymentStatus === 'pending' && isOpen) {
             pollingRef.current = setInterval(async () => {
+                if (countdownRef.current === 0 || countdown <= 0) {
+                    clearInterval(pollingRef.current);
+                    return;
+                }
                 try {
                     const res = await enrollmentService.checkPaymentStatus(transactionId);
                     if (res.data.status === 'completed') {
@@ -68,7 +70,7 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
         return () => {
             if (pollingRef.current) clearInterval(pollingRef.current);
         };
-    }, [transactionId, paymentStatus, isOpen, course.id, navigate, pushToast]);
+    }, [transactionId, paymentStatus, isOpen, course.id, navigate, pushToast, countdown]);
 
     if (!isOpen) return null;
 
@@ -169,7 +171,7 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
                         <div className="text-center animate-fade-in bg-slate-50 p-6 rounded-2xl border border-slate-200">
                             <h4 className="font-bold text-slate-700 mb-4">Quét mã QR bằng App Ngân hàng</h4>
                             <img
-                                src={`https://img.vietqr.io/image/${qrConfig.bank}-${qrConfig.accountNo}-compact2.png?amount=${qrConfig.amount}&addInfo=${encodeURIComponent(qrConfig.description)}&accountName=${encodeURIComponent(qrConfig.accountName)}`}
+                                src={`https://img.vietqr.io/image/${qrConfig.bankCode || qrConfig.bank}-${qrConfig.accountNo}-compact2.png?amount=${qrConfig.amount}&addInfo=${encodeURIComponent(qrConfig.description)}&accountName=${encodeURIComponent(qrConfig.accountName)}`}
                                 alt="Mã QR Thanh Toán"
                                 className="mx-auto rounded-xl shadow-lg border-4 border-white mb-4 w-60 h-60"
                             />

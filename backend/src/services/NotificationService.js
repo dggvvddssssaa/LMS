@@ -1,59 +1,48 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class NotificationService {
   async getNotifications(userId) {
-    const { rows } = await db.query(
-      `SELECT * FROM notifications 
-       WHERE user_id = $1 
-       ORDER BY created_at DESC 
-       LIMIT 50`,
-      [userId]
-    );
-    return rows;
+    return prisma.notifications.findMany({
+      where: { user_id: userId },
+      orderBy: { created_at: 'desc' },
+      take: 50
+    });
   }
 
   async markAsRead(userId, notificationId) {
-    const { rows } = await db.query(
-      `UPDATE notifications 
-       SET is_read = true 
-       WHERE id = $1 AND user_id = $2 
-       RETURNING *`,
-      [notificationId, userId]
-    );
-    
-    if (rows.length === 0) {
-        throw new Error('Notification not found or unauthorized');
-    }
-    
-    return rows[0];
+    const result = await prisma.notifications.updateMany({
+      where: { id: Number(notificationId), user_id: userId },
+      data: { is_read: true }
+    });
+    if (result.count === 0) throw new Error('Notification not found or unauthorized');
+    return prisma.notifications.findUnique({ where: { id: Number(notificationId) } });
   }
 
   async markAllAsRead(userId) {
-    await db.query(
-      `UPDATE notifications SET is_read = true WHERE user_id = $1 AND is_read = false`,
-      [userId]
-    );
+    await prisma.notifications.updateMany({
+      where: { user_id: userId, is_read: false },
+      data: { is_read: true }
+    });
   }
 
-  // System utility to create notifications
   async createNotification(userId, message, type, link) {
-    const { rows } = await db.query(
-      `INSERT INTO notifications (user_id, message, type, link) 
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [userId, message, type || null, link || null]
-    );
-    return rows[0];
+    return prisma.notifications.create({
+      data: {
+        user_id: userId,
+        message,
+        type: type || null,
+        link: link || null
+      }
+    });
   }
 
-  // Batch notify all enrolled students of a course
   async notifyEnrolledStudents(courseId, message, type, link) {
-    const enrollRes = await db.query(
-      "SELECT student_id FROM enrollments WHERE course_id = $1 AND status = 'active'",
-      [courseId]
-    );
-
+    const enrollments = await prisma.enrollment.findMany({
+      where: { course_id: Number(courseId), status: 'active' },
+      select: { student_id: true }
+    });
     const results = [];
-    for (const row of enrollRes.rows) {
+    for (const row of enrollments) {
       const notif = await this.createNotification(row.student_id, message, type, link);
       results.push(notif);
     }

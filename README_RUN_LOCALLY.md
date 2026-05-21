@@ -10,9 +10,10 @@ Bạn cần cài đặt các phần mềm sau trên máy tính của mình:
 *   **PostgreSQL**: Cơ sở dữ liệu chính.
     *   Tải về và cài đặt tại: [https://www.postgresql.org/download/windows/](https://www.postgresql.org/download/windows/)
     *   Khi cài đặt, hãy ghi nhớ mật khẩu của user `postgres` (mặc định thường là `postgres` hoặc bạn tự đặt).
-*   **Redis**: Dùng để quản lý hàng đợi và cache.
+*   **Redis**: (Optional/Khuyên dùng) Dùng để quản lý hàng đợi và cache.
     *   Tải về và chạy Redis trên Windows (có thể dùng bản port hoặc WSL): [https://github.com/microsoftarchive/redis/releases](https://github.com/microsoftarchive/redis/releases) (Bản cũ của MS) hoặc dùng WSL (khuyên dùng).
     *   Hoặc tải bản Memurai (Redis cho Windows): [https://www.memurai.com/get-memurai](https://www.memurai.com/get-memurai) (Bản Developer miễn phí).
+    *   *Lưu ý:* Hệ thống đã được thiết kế chạy fallback an toàn nếu không bật Redis, tuy nhiên một số tính năng thống kê thời gian thực sẽ hiển thị chậm hơn.
 
 ## 2. Cấu hình Cơ sở dữ liệu
 
@@ -62,6 +63,14 @@ npm run dev
 ```
 
 *   Truy cập vào đường dẫn hiện ra (thường là `http://localhost:5173`) để sử dụng ứng dụng.
+
+### Terminal 3: Chạy Ngrok (Dành cho SePay Webhook)
+
+Nếu bạn muốn test tính năng thanh toán SePay trên môi trường local, bạn cần public cổng 4000 (backend) qua Ngrok:
+```bash
+ngrok http 4000
+```
+Sau đó, lấy địa chỉ `https://...` dán vào phần cấu hình Webhook trên dashboard của SePay (URL là: `https://<ngrok-url>/api/webhooks/sepay`). Đảm bảo cập nhật biến `SEPAY_WEBHOOK_API_KEY` trong file `backend/.env`.
 
 ## Lưu ý về Mediasoup (WebRTC)
 

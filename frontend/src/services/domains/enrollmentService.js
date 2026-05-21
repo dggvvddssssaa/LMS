@@ -1,4 +1,4 @@
-﻿import httpClient from "../core/httpClient";
+import httpClient from "../core/httpClient";
 import { extractApiData } from "../core/apiResult";
 
 export const enrollmentService = {
@@ -24,6 +24,10 @@ export const enrollmentService = {
   },
   async markLessonComplete(payload) {
     const res = await httpClient.post("/progress/mark-complete", payload);
+    return extractApiData(res);
+  },
+  async checkPaymentStatus(transactionId) {
+    const res = await httpClient.get(`/enrollments/checkout/status/${transactionId}`);
     return extractApiData(res);
   },
 };

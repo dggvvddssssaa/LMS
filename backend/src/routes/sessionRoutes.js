@@ -3,6 +3,8 @@ const router = express.Router();
 const sessionController = require('../controllers/sessionController');
 const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 const { requireCourseOwnership } = require('../middlewares/ownershipMiddleware');
+const { validate } = require('../middlewares/validateMiddleware');
+const { createSessionSchema, updateSessionSchema } = require('../validators/sessionValidators');
 
 // Public-ish (any authenticated user)
 router.get('/today', verifyToken, sessionController.getToday);
@@ -15,8 +17,8 @@ router.get('/active', verifyToken, requireRole('admin'), sessionController.getAc
 
 // CRUD
 router.get('/live-class/:liveClassId', verifyToken, sessionController.getSessionsByLiveClassId);
-router.post('/', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('session'), sessionController.createSession);
-router.put('/:id', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('session'), sessionController.updateSession);
+router.post('/', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('session'), validate(createSessionSchema), sessionController.createSession);
+router.put('/:id', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('session'), validate(updateSessionSchema), sessionController.updateSession);
 router.delete('/:id', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('session'), sessionController.deleteSession);
 
 // Lifecycle

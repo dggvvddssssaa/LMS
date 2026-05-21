@@ -1,35 +1,62 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class StatsRepository {
   async getOverviewStats() {
-    const userCount = await db.query("SELECT COUNT(*) FROM users");
-    const courseCount = await db.query("SELECT COUNT(*) FROM courses");
-    const revenueSum = await db.query("SELECT SUM(amount) FROM payments WHERE status = 'completed'");
-    
-    return {
-      totalUsers: parseInt(userCount.rows[0].count),
-      totalCourses: parseInt(courseCount.rows[0].count),
-      totalRevenue: revenueSum.rows[0].sum ? parseFloat(revenueSum.rows[0].sum) : 0
-    };
+    try {
+      const [totalUsers, totalCourses, revenueAgg] = await Promise.all([
+        prisma.user.count(),
+        prisma.course.count(),
+        prisma.payment.aggregate({
+          where: { status: 'completed' },
+          _sum: { amount: true }
+        })
+      ]);
+
+      return {
+        totalUsers,
+        totalCourses,
+        totalRevenue: revenueAgg._sum.amount ? parseFloat(revenueAgg._sum.amount) : 0
+      };
+    } catch (error) {
+      console.error('getOverviewStats error:', error);
+      return { totalUsers: 0, totalCourses: 0, totalRevenue: 0 };
+    }
   }
 
   async getMonthlyRevenue() {
-    // Generate simple monthly revenue chart data
-    const query = `
-      SELECT DATE_TRUNC('month', created_at) AS month, SUM(amount) as revenue
-      FROM payments
-      WHERE status = 'completed' AND created_at >= NOW() - INTERVAL '6 months'
-      GROUP BY month
-      ORDER BY month ASC
-    `;
-    const result = await db.query(query);
-    return result.rows;
+    try {
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const payments = await prisma.payment.findMany({
+        where: { status: 'completed', created_at: { gte: sixMonthsAgo } },
+        select: { amount: true, created_at: true },
+        orderBy: { created_at: 'asc' }
+      });
+
+      const monthlyMap = {};
+      for (const p of payments) {
+        const monthKey = p.created_at.toISOString().slice(0, 7);
+        monthlyMap[monthKey] = (monthlyMap[monthKey] || 0) + parseFloat(p.amount);
+      }
+
+      return Object.entries(monthlyMap).map(([month, revenue]) => ({
+        month,
+        revenue
+      }));
+    } catch (error) {
+      console.error('getMonthlyRevenue error:', error);
+      return [];
+    }
   }
 
   async getActiveLiveClassesCount() {
-    const query = `SELECT COUNT(*) FROM live_classes WHERE status = 'ongoing'`;
-    const result = await db.query(query);
-    return parseInt(result.rows[0].count);
+    try {
+      return await prisma.live_classes.count({ where: { status: 'ongoing' } });
+    } catch (error) {
+      console.error('getActiveLiveClassesCount error:', error);
+      return 0;
+    }
   }
 }
 

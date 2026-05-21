@@ -163,9 +163,9 @@ const CourseDetail = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-1">
+<div className="lg:col-span-1">
           <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6 sticky top-24">
-            <h3 className="text-lg font-black text-slate-800 mb-6">Thông Tin Thêm</h3>
+            <h3 className="text-lg font-black text-slate-800 mb-6">Thông Tin Khóa Học</h3>
             <div className="space-y-5">
               <div>
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Giảng viên</p>

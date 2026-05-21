@@ -1,31 +1,29 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class MaterialRepository {
   async findByCourseId(courseId) {
-    const query = `
-      SELECT * FROM course_materials
-      WHERE course_id = $1
-      ORDER BY created_at DESC
-    `;
-    const result = await db.query(query, [courseId]);
-    return result.rows;
+    return prisma.course_materials.findMany({
+      where: { course_id: Number(courseId) },
+      orderBy: { created_at: 'desc' }
+    });
   }
 
   async create(data) {
-    const { course_id, title, file_url, file_type } = data;
-    const query = `
-      INSERT INTO course_materials (course_id, title, file_url, file_type)
-      VALUES ($1, $2, $3, $4)
-      RETURNING *
-    `;
-    const result = await db.query(query, [course_id, title, file_url, file_type || 'document']);
-    return result.rows[0];
+    return prisma.course_materials.create({
+      data: {
+        course_id: Number(data.course_id),
+        title: data.title,
+        file_url: data.file_url,
+        file_type: data.file_type || 'document'
+      }
+    });
   }
 
   async delete(id) {
-    const query = 'DELETE FROM course_materials WHERE id = $1 RETURNING id';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.course_materials.delete({
+      where: { id: Number(id) },
+      select: { id: true }
+    });
   }
 }
 

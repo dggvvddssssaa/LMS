@@ -1,1 +1,0 @@
-["id","live_class_id","title","start_time","end_time","meeting_link","meeting_id","notes","status","created_at"]

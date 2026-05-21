@@ -15,7 +15,8 @@ const ProtectedRoute = ({ children, roles }) => {
 
     // Not logged in → redirect to login, preserve intended destination
     if (!user) {
-        return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+        const redirectUrl = location.pathname + location.search;
+        return <Navigate to={`/login?from=${encodeURIComponent(redirectUrl)}`} state={{ from: redirectUrl }} replace />;
     }
 
     // Role check (if roles array specified)

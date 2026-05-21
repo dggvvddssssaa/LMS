@@ -173,7 +173,6 @@ export default function CourseEditor() {
     ]).then(([courseRes, matRes, catRes, tplRes]) => {
       if (courseRes.data.success) {
         const data = courseRes.data.data;
-        if (data.type === 'video') data.type = 'recorded';
         setCourse(data);
         setSections(data.sections || []);
       }
@@ -204,12 +203,12 @@ export default function CourseEditor() {
         } else {
           setSlugStatus({ loading: false, valid: false, msg: 'Slug đã tồn tại' });
         }
-      } catch (err) {
+      } catch (_err) {
         setSlugStatus({ loading: false, valid: false, msg: 'Lỗi kiểm tra' });
       }
     }, 500);
     return () => clearTimeout(timer);
-  }, [course?.slug, id]);
+    }, [course, id]);
 
   const { trigger: autoSaveCourse, status: saveStatus } = useAutoSave(
     useCallback(async (data) => { await httpClient.put(`/admin/courses/${id}`, data); }, [id])
@@ -350,7 +349,7 @@ export default function CourseEditor() {
                   try {
                     const res = await httpClient.post('/admin/courses/slug/suggest', { title: course.title, excludeId: id });
                     if (res.data.success) updateField('slug', res.data.slug);
-                  } catch (err) { pushToast({ type: 'error', title: 'Lỗi', message: 'Không thể tạo slug' }); }
+                  } catch (_err) { pushToast({ type: 'error', title: 'Lỗi', message: 'Không thể tạo slug' }); }
                 }} className="px-3 py-2 border border-slate-200 rounded-xl hover:bg-slate-50 text-slate-500 transition-colors" title="Tạo lại slug" type="button">
                   🔄
                 </button>
@@ -512,8 +511,8 @@ export default function CourseEditor() {
             </select>
           </div>
           <div><label className="block text-sm font-semibold text-slate-600 mb-1.5">Loại khóa học</label>
-            <select value={course.type === 'video' ? 'recorded' : (course.type || 'recorded')} onChange={e => updateField('type', e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold text-blue-600">
-              <option value="recorded">Khóa học Video</option>
+            <select value={course.type || 'video'} onChange={e => updateField('type', e.target.value)} className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm font-bold text-blue-600">
+              <option value="video">Khóa học Video</option>
               <option value="live">Lớp học Trực tiếp</option>
               <option value="hybrid">Hỗn hợp (Video + Live)</option>
             </select>

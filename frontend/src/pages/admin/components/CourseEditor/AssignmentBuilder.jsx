@@ -13,7 +13,7 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
   const [description, setDescription] = useState('');
   const [kind, setKind] = useState('mcq'); // 'mcq' or 'essay'
   const [scoreMax, setScoreMax] = useState(100);
-  const [deadline, setDeadline] = useState('');
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState('');
   
   // MCQ specific payload
   const [questions, setQuestions] = useState([
@@ -59,7 +59,7 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
         setDescription(existing.description || '');
         setKind(existing.kind || 'mcq');
         setScoreMax(existing.score_max || 100);
-        setDeadline(existing.deadline ? new Date(existing.deadline).toISOString().slice(0, 16) : '');
+        setTimeLimitMinutes(existing.time_limit_minutes || '');
         
         if (existing.kind === 'mcq' && existing.payload?.questions) {
           const formatted = existing.payload.questions.map((q, idx) => {
@@ -69,7 +69,8 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
                 question: q.questionText || q.question || '',
                 options: q.options.map((opt, oIdx) => ({ id: `q-${idx}-opt-${oIdx}`, text: opt })),
                 correctOptionId: `q-${idx}-opt-${q.correctAnswer}`,
-                explanation: q.explanation || ''
+                explanation: q.explanation || '',
+                points: q.points || 1
               };
             }
             return q;
@@ -129,6 +130,10 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
       let scope = 'lesson';
       if (isFinal) scope = 'final';
       else if (sectionId) scope = 'section';
+
+      const computedScoreMax = kind === 'mcq' 
+        ? questions.reduce((sum, q) => sum + (Number(q.points) || 1), 0)
+        : Number(scoreMax) || 100;
       
       const data = {
         lesson_id: isFinal || sectionId ? null : lessonId,
@@ -138,8 +143,8 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
         description,
         kind,
         payload,
-        score_max: Number(scoreMax),
-        deadline: deadline ? new Date(deadline).toISOString() : null,
+        score_max: computedScoreMax,
+        time_limit_minutes: timeLimitMinutes ? Number(timeLimitMinutes) : null,
         assignment_scope: scope
       };
 
@@ -195,25 +200,16 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
               className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-400" 
             />
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Điểm tối đa</label>
-              <input 
-                type="number"
-                value={scoreMax} 
-                onChange={e => setScoreMax(e.target.value)} 
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-bold text-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-slate-600 mb-1.5 uppercase tracking-wide">Hạn chót (Deadline)</label>
-              <input 
-                type="datetime-local"
-                value={deadline} 
-                onChange={e => setDeadline(e.target.value)} 
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-400" 
-              />
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 mb-1">⏱ Thời gian làm bài (phút)</label>
+            <input
+              type="number"
+              min="1"
+              className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+              value={timeLimitMinutes}
+              onChange={(e) => setTimeLimitMinutes(e.target.value)}
+              placeholder="Để trống = không giới hạn"
+            />
           </div>
         </div>
 
@@ -291,6 +287,21 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
                       </div>
                     ))}
                   </div>
+
+                  <div className="flex items-center gap-2 mt-2 pl-9">
+                    <label className="text-xs text-slate-500">Điểm:</label>
+                    <input
+                      type="number"
+                      min="1"
+                      className="w-16 px-2 py-1 border border-slate-200 rounded text-sm text-center"
+                      value={q.points || 1}
+                      onChange={(e) => {
+                        const updated = [...questions];
+                        updated[qIdx].points = Number(e.target.value) || 1;
+                        setQuestions(updated);
+                      }}
+                    />
+                  </div>
                 </div>
               ))}
               
@@ -315,6 +326,13 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
         </div>
       </div>
 
+      {kind === 'mcq' && questions.length > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700 flex items-center justify-between mt-4">
+          <span>📝 {questions.length} câu hỏi</span>
+          <span>🏆 Tổng điểm: {questions.reduce((sum, q) => sum + (Number(q.points) || 1), 0)}</span>
+        </div>
+      )}
+
       <div className="mt-6 flex justify-between items-center relative z-10 pt-4 border-t border-slate-100">
         {assignment ? (
           <button onClick={handleDelete} className="text-red-500 hover:text-red-700 text-sm font-bold flex items-center gap-1">
@@ -337,4 +355,3 @@ export default function AssignmentBuilder({ lessonId, sectionId, courseId, isFin
     </div>
   );
 }
-

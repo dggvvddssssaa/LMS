@@ -1,38 +1,30 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class CategoryRepository {
   async getAll() {
-    const result = await db.query('SELECT * FROM categories ORDER BY name ASC');
-    return result.rows;
+    return prisma.categories.findMany({ orderBy: { name: 'asc' } });
   }
 
   async create(data) {
-    const { name, slug } = data;
-    const result = await db.query(
-      'INSERT INTO categories (name, slug) VALUES ($1, $2) RETURNING *',
-      [name, slug]
-    );
-    return result.rows[0];
+    return prisma.categories.create({ data });
   }
 
-  async setCourseCategories(courseId, categoryIds, client) {
-    const queryRunner = client || db;
-    // Delete existing
-    await queryRunner.query('DELETE FROM course_categories WHERE course_id = $1', [courseId]);
+  async setCourseCategories(courseId, categoryIds) {
+    const cid = Number(courseId);
+    await prisma.course_categories.deleteMany({ where: { course_id: cid } });
     if (categoryIds && categoryIds.length > 0) {
-      const values = categoryIds.map((catId, index) => `($1, $${index + 2})`).join(', ');
-      const params = [courseId, ...categoryIds];
-      await queryRunner.query(`INSERT INTO course_categories (course_id, category_id) VALUES ${values}`, params);
+      await prisma.course_categories.createMany({
+        data: categoryIds.map(catId => ({ course_id: cid, category_id: Number(catId) }))
+      });
     }
   }
 
   async getCourseCategories(courseId) {
-    const result = await db.query(`
-      SELECT c.* FROM categories c
-      JOIN course_categories cc ON c.id = cc.category_id
-      WHERE cc.course_id = $1
-    `, [courseId]);
-    return result.rows;
+    const rows = await prisma.course_categories.findMany({
+      where: { course_id: Number(courseId) },
+      include: { categories: true }
+    });
+    return rows.map(r => r.categories).filter(Boolean);
   }
 }
 

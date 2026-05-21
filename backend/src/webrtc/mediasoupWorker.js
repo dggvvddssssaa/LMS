@@ -1,3 +1,4 @@
+const os = require('os');
 const mediasoup = require('mediasoup');
 const config = require('./config');
 const logger = require('../utils/logger');
@@ -6,8 +7,8 @@ let workers = [];
 let nextWorkerIdx = 0;
 
 const initMediasoup = async () => {
-    // Use number of CPUs for workers, or just 1 for dev
-    const numWorkers = 1; // Simplify for dev environment
+    const numWorkers = Math.max(1, os.cpus().length || 1);
+    logger.info(`Initializing ${numWorkers} mediasoup workers...`);
 
     for (let i = 0; i < numWorkers; i++) {
         const worker = await mediasoup.createWorker({

@@ -6,7 +6,7 @@
  * - 30 minutes before session start
  * - Sessions starting today (morning batch)
  */
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 const NotificationService = require('../services/NotificationService');
 const logger = require('../utils/logger');
 
@@ -15,25 +15,36 @@ const sentReminders = new Set(); // Format: "session_{id}_30min" or "session_{id
 
 async function checkUpcomingReminders() {
     try {
-        // Find sessions starting within 30 minutes that haven't been notified
-        const { rows: upcoming } = await db.query(`
-            SELECT s.id, s.title, s.start_time, s.meeting_id, lc.course_id
-            FROM sessions s
-            JOIN live_classes lc ON s.live_class_id = lc.id
-            WHERE s.status IN ('scheduled', 'open')
-              AND s.start_time > NOW()
-              AND s.start_time <= NOW() + INTERVAL '35 minutes'
-        `);
+        // Find sessions starting within 35 minutes that haven't been notified
+        const now = new Date();
+        const thirtyFiveMinLater = new Date(now.getTime() + 35 * 60 * 1000);
+
+        const upcoming = await prisma.sessions.findMany({
+            where: {
+                status: { in: ['scheduled', 'open'] },
+                start_time: { gt: now, lte: thirtyFiveMinLater }
+            },
+            select: {
+                id: true,
+                title: true,
+                start_time: true,
+                meeting_id: true,
+                live_classes: { select: { course_id: true } }
+            }
+        });
 
         for (const session of upcoming) {
             const key30 = `session_${session.id}_30min`;
             if (!sentReminders.has(key30)) {
+                const courseId = session.live_classes ? Number(session.live_classes.course_id) : null;
+                if (!courseId) continue;
+
                 const startStr = new Date(session.start_time).toLocaleString('vi-VN');
                 const message = `⏰ Lớp "${session.title}" sẽ bắt đầu lúc ${startStr} (còn ~30 phút)`;
                 const link = `/session/${session.meeting_id}/join`;
 
                 await NotificationService.notifyEnrolledStudents(
-                    session.course_id, message, 'session_reminder', link
+                    courseId, message, 'session_reminder', link
                 );
 
                 sentReminders.add(key30);
@@ -47,24 +58,36 @@ async function checkUpcomingReminders() {
 
 async function checkTodaySessions() {
     try {
-        const { rows: todaySessions } = await db.query(`
-            SELECT s.id, s.title, s.start_time, s.meeting_id, lc.course_id
-            FROM sessions s
-            JOIN live_classes lc ON s.live_class_id = lc.id
-            WHERE s.status IN ('scheduled', 'open')
-              AND s.start_time >= CURRENT_DATE
-              AND s.start_time < CURRENT_DATE + INTERVAL '1 day'
-        `);
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const tomorrowStart = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+        const todaySessions = await prisma.sessions.findMany({
+            where: {
+                status: { in: ['scheduled', 'open'] },
+                start_time: { gte: todayStart, lt: tomorrowStart }
+            },
+            select: {
+                id: true,
+                title: true,
+                start_time: true,
+                meeting_id: true,
+                live_classes: { select: { course_id: true } }
+            }
+        });
 
         for (const session of todaySessions) {
             const keyToday = `session_${session.id}_today`;
             if (!sentReminders.has(keyToday)) {
+                const courseId = session.live_classes ? Number(session.live_classes.course_id) : null;
+                if (!courseId) continue;
+
                 const startStr = new Date(session.start_time).toLocaleString('vi-VN');
                 const message = `📅 Hôm nay bạn có lớp "${session.title}" lúc ${startStr}`;
                 const link = `/session/${session.meeting_id}/join`;
 
                 await NotificationService.notifyEnrolledStudents(
-                    session.course_id, message, 'session_today', link
+                    courseId, message, 'session_today', link
                 );
 
                 sentReminders.add(keyToday);

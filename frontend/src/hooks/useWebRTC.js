@@ -4,7 +4,7 @@ import io from 'socket.io-client';
 
 const log = (...args) => { if(import.meta.env.DEV) console.debug(...args); };
 
-const useWebRTC = (roomId, isTeacher) => {
+const useWebRTC = (roomId, _isTeacher) => {
     const [peers, setPeers] = useState([]); // [{ peerId, isTeacher, userName, role, camStream, screenStream, hasVideo, hasAudio }]
     const [localStream, setLocalStream] = useState(null);
     const [localScreenStream, setLocalScreenStream] = useState(null);
@@ -142,7 +142,7 @@ const useWebRTC = (roomId, isTeacher) => {
         } catch (err) {
             console.error('[WebRTC] Error consuming producer', producerId, err);
         }
-    }, [roomId, request]);
+    }, [request]);
 
     const drainPendingProducers = useCallback(() => {
         const pending = [...pendingProducersRef.current];
@@ -215,7 +215,7 @@ const useWebRTC = (roomId, isTeacher) => {
             console.error('[WebRTC] Recv transport error', err);
             setError('Không thể tạo kết nối nhận media');
         }
-    }, [roomId, request, drainPendingProducers]);
+    }, [request, drainPendingProducers]);
 
     const loadDevice = useCallback(async (routerRtpCapabilities) => {
         try {
@@ -232,7 +232,7 @@ const useWebRTC = (roomId, isTeacher) => {
     const sendMessage = useCallback((text) => {
         if (!socketRef.current) return;
         socketRef.current.emit('chatMessage', { roomId: canonicalRoomIdRef.current, text });
-    }, [roomId]);
+    }, []);
 
     // ====== CLOSE PRODUCER: emit to server so remote consumers get notified ======
     const closeProducerOnServer = useCallback((producerId) => {
@@ -253,11 +253,16 @@ const useWebRTC = (roomId, isTeacher) => {
         const socket = io(SOCKET_URL, {
             auth: { token },
             transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 10000,
         });
         socketRef.current = socket;
 
         socket.on('connect', () => {
             log('[WebRTC] Socket connected:', socket.id);
+            setConnectionState(prev => prev !== 'reconnecting' ? 'connecting' : prev);
             socket.emit('joinRoom', { roomId }, async (response) => {
                 if (response && response.error) {
                     setError(response.error);
@@ -392,10 +397,64 @@ const useWebRTC = (roomId, isTeacher) => {
 
         socket.on('disconnect', (reason) => {
             log(`[WebRTC] Disconnected: ${reason}`);
-            if (reason === 'io server disconnect' || reason === 'transport close') {
+            if (reason === 'io server disconnect') {
                 setConnectionState('failed');
                 setError('Mất kết nối đến máy chủ');
             }
+        });
+
+        socket.io.on('reconnect_attempt', (attempt) => {
+            log(`[WebRTC] Reconnect attempt ${attempt}`);
+            setConnectionState('reconnecting');
+        });
+
+        socket.io.on('reconnect', () => {
+            log('[WebRTC] Reconnected, rejoining room...');
+            setConnectionState('connecting');
+
+            const device = deviceRef.current;
+            producerTransportRef.current = null;
+            consumerTransportRef.current = null;
+            producersRef.current.clear();
+            consumersRef.current.clear();
+            consumedProducersRef.current.clear();
+            producerMapRef.current.clear();
+
+            socket.emit('joinRoom', { roomId }, async (response) => {
+                if (response?.error) {
+                    setError(response.error);
+                    setConnectionState('failed');
+                    return;
+                }
+                const { rtpCapabilities, activePeers, canonicalRoomId } = response;
+                if (canonicalRoomId) canonicalRoomIdRef.current = canonicalRoomId;
+
+                if (activePeers) {
+                    setPeers(activePeers.map(ap => ({
+                        peerId: ap.peerId,
+                        isTeacher: ap.isTeacher,
+                        userName: ap.userName || 'Unknown',
+                        role: ap.role || 'student',
+                        camStream: new MediaStream(),
+                        screenStream: new MediaStream(),
+                        hasVideo: false,
+                        hasAudio: false,
+                    })));
+                }
+
+                if (!device) await loadDevice(rtpCapabilities);
+                await initTransports();
+
+                const effectiveRoomId = canonicalRoomIdRef.current;
+                socket.emit('getProducers', { roomId: effectiveRoomId }, (producers) => {
+                    if (!Array.isArray(producers)) return;
+                    producers.forEach(p => {
+                        if (p.peerId !== socket.id) consume(p.producerId, p.peerId, p.kind, p.appData);
+                    });
+                });
+
+                setConnectionState('connected');
+            });
         });
 
         return () => {

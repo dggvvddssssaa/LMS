@@ -3,6 +3,8 @@ const router = express.Router();
 const MaterialRepository = require('../repositories/MaterialRepository');
 const { verifyToken, requireRole } = require('../middlewares/authMiddleware');
 const { requireCourseOwnership } = require('../middlewares/ownershipMiddleware');
+const { validate } = require('../middlewares/validateMiddleware');
+const { addMaterialSchema } = require('../validators/materialValidators');
 
 // Get materials for a course (public for enrolled students)
 router.get('/:courseId', verifyToken, async (req, res) => {
@@ -15,12 +17,9 @@ router.get('/:courseId', verifyToken, async (req, res) => {
 });
 
 // Add material (admin/instructor only)
-router.post('/', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('material'), async (req, res) => {
+router.post('/', verifyToken, requireRole('admin', 'instructor'), requireCourseOwnership('material'), validate(addMaterialSchema), async (req, res) => {
   try {
     const { course_id, title, file_url, file_type } = req.body;
-    if (!course_id || !title || !file_url) {
-      return res.status(400).json({ success: false, message: 'course_id, title, and file_url are required' });
-    }
     const material = await MaterialRepository.create({ course_id, title, file_url, file_type });
     res.status(201).json({ success: true, data: material });
   } catch (err) {

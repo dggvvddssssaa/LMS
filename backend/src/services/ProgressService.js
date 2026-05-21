@@ -1,162 +1,139 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 const EnrollmentRepository = require('../repositories/EnrollmentRepository');
 
 class ProgressService {
   async _getEnrollment(userId, courseId) {
     const enrollment = await EnrollmentRepository.checkEnrollment(userId, courseId);
-    if (!enrollment) {
-      throw new Error('Not enrolled in this course');
-    }
+    if (!enrollment) throw new Error('Not enrolled in this course');
     return enrollment;
   }
 
   async _updateCourseProgress(enrollmentId, courseId) {
-    const completedLessonsQuery = `
-        SELECT count(*) as completed FROM lesson_progress lp
-        WHERE lp.enrollment_id = $1 AND lp.is_completed = true
-    `;
-
-    const [totalRes, completedRes] = await Promise.all([
-        db.query(`SELECT count(l.id) as total FROM lessons l JOIN sections s ON l.section_id = s.id WHERE s.course_id = $1`, [courseId]),
-        db.query(completedLessonsQuery, [enrollmentId])
+    const [total, completed] = await Promise.all([
+      prisma.lesson.count({
+        where: { section: { course_id: Number(courseId) } }
+      }),
+      prisma.lesson_progress.count({
+        where: { enrollment_id: enrollmentId, is_completed: true }
+      })
     ]);
 
-    const total = parseInt(totalRes.rows[0].total) || 0;
-    const completed = parseInt(completedRes.rows[0].completed) || 0;
-    
-    let progressPercent = 0;
-    if (total > 0) {
-        progressPercent = Math.round((completed / total) * 100);
-    }
+    const progressPercent = total > 0 ? Math.round((completed / total) * 100) : 0;
 
-    // Update enrollment progress
-    await db.query(
-        `UPDATE enrollments SET progress = $1 WHERE id = $2`,
-        [progressPercent, enrollmentId]
-    );
+    await prisma.enrollment.update({
+      where: { id: enrollmentId },
+      data: { progress: progressPercent }
+    });
 
     return { progressPercent, total, completed };
   }
 
   async markComplete(userId, courseId, lessonId, isCompleted) {
     const enrollment = await this._getEnrollment(userId, courseId);
-    const enrollmentId = enrollment.id;
 
-    // Verify lesson belongs to course
-    const lessonRes = await db.query(`SELECT l.id FROM lessons l JOIN sections s ON l.section_id = s.id WHERE l.id = $1 AND s.course_id = $2`, [lessonId, courseId]);
-    if (lessonRes.rows.length === 0) {
-        throw new Error('Lesson not found in this course');
-    }
+    const lesson = await prisma.lesson.findFirst({
+      where: { id: Number(lessonId), section: { course_id: Number(courseId) } },
+      select: { id: true }
+    });
+    if (!lesson) throw new Error('Lesson not found in this course');
 
-    // Upsert lesson_progress
-    const query = `
-      INSERT INTO lesson_progress (enrollment_id, lesson_id, is_completed, updated_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (enrollment_id, lesson_id) 
-      DO UPDATE SET is_completed = EXCLUDED.is_completed, updated_at = NOW()
-      RETURNING *
-    `;
-    const result = await db.query(query, [enrollmentId, lessonId, isCompleted]);
+    const lessonProgress = await prisma.lesson_progress.upsert({
+      where: { enrollment_id_lesson_id: { enrollment_id: enrollment.id, lesson_id: Number(lessonId) } },
+      create: { enrollment_id: enrollment.id, lesson_id: Number(lessonId), is_completed: isCompleted },
+      update: { is_completed: isCompleted, updated_at: new Date() }
+    });
 
-    // Recalculate total course progress
-    const courseProgress = await this._updateCourseProgress(enrollmentId, courseId);
+    const courseProgress = await this._updateCourseProgress(enrollment.id, courseId);
+    let certificate = await this.checkAndIssueCertificate(userId, courseId, enrollment.id, courseProgress.progressPercent);
 
-    // Try generating certificate if conditions met
-    let certificate = await this.checkAndIssueCertificate(userId, courseId, enrollmentId, courseProgress.progressPercent);
-
-    return {
-        lessonProgress: result.rows[0],
-        courseProgress,
-        certificate
-    };
+    return { lessonProgress, courseProgress, certificate };
   }
 
   async checkAndIssueCertificate(userId, courseId, enrollmentId, progressPercent) {
-    const courseRes = await db.query('SELECT certificate_enabled, certificate_min_progress, certificate_requires_final_assignment, certificate_pass_percent FROM courses WHERE id = $1', [courseId]);
-    if (courseRes.rows.length === 0 || !courseRes.rows[0].certificate_enabled) return null;
+    const course = await prisma.course.findUnique({
+      where: { id: Number(courseId) },
+      select: {
+        certificate_enabled: true,
+        certificate_min_progress: true,
+        certificate_requires_final_assignment: true,
+        certificate_pass_percent: true
+      }
+    });
 
-    const course = courseRes.rows[0];
-    const minProgress = course.certificate_min_progress ?? 100;
-    
-    if (progressPercent < minProgress) return null;
+    if (!course || !course.certificate_enabled) return null;
+    if (progressPercent < (course.certificate_min_progress ?? 100)) return null;
 
-    // Check final assignment if required
     if (course.certificate_requires_final_assignment) {
-      const finalAssignRes = await db.query("SELECT id FROM assignments WHERE course_id = $1 AND assignment_scope = 'final' LIMIT 1", [courseId]);
-      if (finalAssignRes.rows.length > 0) {
-         const finalAssignId = finalAssignRes.rows[0].id;
-         const submissionRes = await db.query("SELECT score, status FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2", [finalAssignId, userId]);
-         if (submissionRes.rows.length === 0) return null; // Not submitted yet
-         
-         const sub = submissionRes.rows[0];
-         // Check if status is passed, or if score is sufficient
-         const isPassed = sub.status === 'passed' || sub.status === 'graded';
-         if (!isPassed && sub.score < (course.certificate_pass_percent || 80)) return null; 
+      const finalAssignment = await prisma.assignments.findFirst({
+        where: { course_id: Number(courseId), assignment_scope: 'final' }
+      });
+
+      if (finalAssignment) {
+        const submission = await prisma.assignment_submissions.findFirst({
+          where: { assignment_id: finalAssignment.id, student_id: userId }
+        });
+        if (!submission) return null;
+
+        const isPassed = submission.status === 'passed' || submission.status === 'graded';
+        if (!isPassed && submission.score < (course.certificate_pass_percent || 80)) return null;
       }
     }
 
-    // Generate certificate
-    const certRes = await db.query('SELECT id, certificate_url FROM certificates WHERE enrollment_id = $1', [enrollmentId]);
-    if (certRes.rows.length > 0) return certRes.rows[0];
+    const existing = await prisma.certificates.findFirst({
+      where: { enrollment_id: enrollmentId }
+    });
+    if (existing) return existing;
 
-    const certUrl = `/certificates/${userId}_${courseId}.pdf`; // Mock URL for now
-    const newCert = await db.query(
-      `INSERT INTO certificates (enrollment_id, user_id, course_id, certificate_url) 
-       VALUES ($1, $2, $3, $4) RETURNING *`,
-      [enrollmentId, userId, courseId, certUrl]
-    );
-    
-    // Trigger notification
+    const newCert = await prisma.certificates.create({
+      data: {
+        enrollment_id: enrollmentId,
+        user_id: userId,
+        course_id: Number(courseId),
+        certificate_url: `/certificates/${userId}_${courseId}.pdf`
+      }
+    });
+
     const NotificationService = require('./NotificationService');
     await NotificationService.createNotification(
-      userId, 
-      'Chúc mừng! Bạn đã hoàn thành khóa học và nhận được chứng chỉ mới.', 
+      userId,
+      'Chúc mừng! Bạn đã hoàn thành khóa học và nhận được chứng chỉ mới.',
       'certificate_earned'
     );
-    return newCert.rows[0];
+
+    return newCert;
   }
 
   async savePosition(userId, courseId, lessonId, lastPosition) {
     const enrollment = await this._getEnrollment(userId, courseId);
-    
-    // Upsert lesson_progress for position
-    const query = `
-      INSERT INTO lesson_progress (enrollment_id, lesson_id, last_position, updated_at)
-      VALUES ($1, $2, $3, NOW())
-      ON CONFLICT (enrollment_id, lesson_id) 
-      DO UPDATE SET last_position = EXCLUDED.last_position, updated_at = NOW()
-      RETURNING *
-    `;
-    const result = await db.query(query, [enrollment.id, lessonId, lastPosition]);
-    
-    return result.rows[0];
+
+    return prisma.lesson_progress.upsert({
+      where: { enrollment_id_lesson_id: { enrollment_id: enrollment.id, lesson_id: Number(lessonId) } },
+      create: { enrollment_id: enrollment.id, lesson_id: Number(lessonId), last_position: lastPosition },
+      update: { last_position: lastPosition, updated_at: new Date() }
+    });
   }
 
   async getCourseProgress(userId, courseId) {
     const enrollment = await this._getEnrollment(userId, courseId);
-    
-    const query = `
-      SELECT lesson_id, is_completed, last_position, updated_at
-      FROM lesson_progress
-      WHERE enrollment_id = $1
-    `;
-    
-    const result = await db.query(query, [enrollment.id]);
-    
-    // Convert to map for easy frontend lookup
-    const progressMap = {};
-    result.rows.forEach(row => {
-        progressMap[row.lesson_id] = {
-            isCompleted: row.is_completed,
-            lastPosition: row.last_position,
-            updatedAt: row.updated_at
-        };
+
+    const rows = await prisma.lesson_progress.findMany({
+      where: { enrollment_id: enrollment.id },
+      select: { lesson_id: true, is_completed: true, last_position: true, updated_at: true }
     });
-    
+
+    const progressMap = {};
+    rows.forEach(row => {
+      progressMap[row.lesson_id] = {
+        isCompleted: row.is_completed,
+        lastPosition: row.last_position,
+        updatedAt: row.updated_at
+      };
+    });
+
     return {
-        enrollmentId: enrollment.id,
-        overallProgress: parseFloat(enrollment.progress) || 0,
-        lessons: progressMap
+      enrollmentId: enrollment.id,
+      overallProgress: parseFloat(enrollment.progress) || 0,
+      lessons: progressMap
     };
   }
 }

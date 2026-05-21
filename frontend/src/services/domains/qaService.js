@@ -1,4 +1,4 @@
-﻿import httpClient from "../core/httpClient";
+import httpClient from "../core/httpClient";
 import { extractApiData } from "../core/apiResult";
 
 export const qaService = {
@@ -19,6 +19,10 @@ export const qaService = {
   },
   async acceptAnswer(answerId) {
     const res = await httpClient.put(`/qa/answer/${answerId}/accept`);
+    return extractApiData(res);
+  },
+  async toggleReaction({ targetType, targetId, emoji }) {
+    const res = await httpClient.post('/qa/reaction', { targetType, targetId, emoji });
     return extractApiData(res);
   },
 };

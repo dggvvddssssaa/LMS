@@ -107,6 +107,12 @@ const Classroom = () => {
                     Đang kết nối media...
                 </div>
             )}
+            {connectionState === 'reconnecting' && (
+                <div className="mb-4 bg-yellow-500/20 border border-yellow-500/50 text-yellow-200 px-4 py-3 rounded-xl mx-auto max-w-2xl text-center flex items-center justify-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-yellow-400 animate-pulse"></span>
+                    Mất kết nối, đang thử kết nối lại...
+                </div>
+            )}
             {connectionState === 'failed' && (
                 <div className="mb-4 bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl mx-auto max-w-2xl text-center">
                     ⚠️ Kết nối media thất bại. Kiểm tra mạng hoặc thử tải lại trang.

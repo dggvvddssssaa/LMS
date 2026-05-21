@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 
 export default [
-  { ignores: ['dist', 'node_modules'] },
+  { ignores: ['dist', 'node_modules', 'verify-webrtc.js'] },
   {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
@@ -26,8 +26,8 @@ export default [
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^React$' }],
-      'no-console': ['warn', { allow: ['warn', 'error'] }],
+      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^React$', caughtErrorsIgnorePattern: '^_' }],
+      'no-console': ['warn', { allow: ['warn', 'error', 'debug'] }],
       'no-irregular-whitespace': 'off',
     },
     plugins: {
@@ -47,6 +47,14 @@ export default [
     },
     rules: {
       'no-undef': 'off',
+    },
+  },
+  {
+    files: ['*.config.js'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 ];

@@ -1,121 +1,102 @@
-const db = require('../config/db');
+const prisma = require('../config/prisma');
 
 class AssignmentRepository {
   async getByLesson(lessonId) {
-    const query = `
-      SELECT * FROM assignments
-      WHERE lesson_id = $1 AND assignment_scope = 'lesson'
-      ORDER BY created_at DESC
-    `;
-    const result = await db.query(query, [lessonId]);
-    return result.rows;
+    return prisma.assignments.findMany({
+      where: { lesson_id: Number(lessonId), assignment_scope: 'lesson' },
+      orderBy: { created_at: 'desc' }
+    });
   }
 
   async getBySection(sectionId) {
-    const query = `
-      SELECT * FROM assignments
-      WHERE section_id = $1 AND assignment_scope = 'section'
-      ORDER BY created_at DESC
-    `;
-    const result = await db.query(query, [sectionId]);
-    return result.rows;
+    return prisma.assignments.findMany({
+      where: { section_id: Number(sectionId), assignment_scope: 'section' },
+      orderBy: { created_at: 'desc' }
+    });
   }
 
   async getByCourseFinal(courseId) {
-    const query = `
-      SELECT * FROM assignments
-      WHERE course_id = $1 AND assignment_scope = 'final'
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    const result = await db.query(query, [courseId]);
-    return result.rows[0];
+    return prisma.assignments.findFirst({
+      where: { course_id: Number(courseId), assignment_scope: 'final' },
+      orderBy: { created_at: 'desc' }
+    });
   }
 
   async getById(id) {
-    const query = 'SELECT * FROM assignments WHERE id = $1';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.assignments.findUnique({ where: { id: Number(id) } });
   }
 
   async create(data) {
-    const { lesson_id, section_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent } = data;
-    const query = `
-      INSERT INTO assignments (lesson_id, section_id, course_id, title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      lesson_id || null, section_id || null, course_id, title, description, deadline || null, kind || 'mcq', payload ? JSON.stringify(payload) : null, score_max || 100, assignment_scope || 'lesson', pass_percent || 80
-    ]);
-    return result.rows[0];
+    return prisma.assignments.create({
+      data: {
+        lesson_id: data.lesson_id ? Number(data.lesson_id) : null,
+        section_id: data.section_id ? Number(data.section_id) : null,
+        course_id: data.course_id ? Number(data.course_id) : null,
+        title: data.title,
+        description: data.description || null,
+        deadline: data.deadline ? new Date(data.deadline) : null,
+        kind: data.kind || 'mcq',
+        payload: data.payload || undefined,
+        score_max: data.score_max || 100,
+        assignment_scope: data.assignment_scope || 'lesson',
+        pass_percent: data.pass_percent || 80,
+        time_limit_minutes: data.time_limit_minutes || null
+      }
+    });
   }
 
   async update(id, data) {
-    const { title, description, deadline, kind, payload, score_max, assignment_scope, pass_percent, section_id } = data;
-    const query = `
-      UPDATE assignments
-      SET title = COALESCE($1, title),
-          description = COALESCE($2, description),
-          deadline = COALESCE($3, deadline),
-          kind = COALESCE($4, kind),
-          payload = COALESCE($5, payload),
-          score_max = COALESCE($6, score_max),
-          assignment_scope = COALESCE($7, assignment_scope),
-          pass_percent = COALESCE($8, pass_percent),
-          section_id = COALESCE($9, section_id)
-      WHERE id = $10
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      title, description, deadline, kind, payload ? JSON.stringify(payload) : null, score_max, assignment_scope, pass_percent, section_id, id
-    ]);
-    return result.rows[0];
+    const cleanData = {};
+    const fields = ['title', 'description', 'deadline', 'kind', 'payload', 'score_max', 'assignment_scope', 'pass_percent', 'section_id', 'time_limit_minutes'];
+    for (const key of fields) {
+      if (data[key] !== undefined) cleanData[key] = data[key];
+    }
+    if (data.deadline) cleanData.deadline = new Date(data.deadline);
+    if (data.section_id) cleanData.section_id = Number(data.section_id);
+
+    return prisma.assignments.update({
+      where: { id: Number(id) },
+      data: cleanData
+    });
   }
 
   async delete(id) {
-    const query = 'DELETE FROM assignments WHERE id = $1 RETURNING id';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.assignments.delete({ where: { id: Number(id) }, select: { id: true } });
   }
 
   async submitAssignment(data) {
     const { assignment_id, student_id, answers, score, status } = data;
-    
-    // Check if submission already exists
-    const checkQuery = 'SELECT id FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2';
-    const checkResult = await db.query(checkQuery, [assignment_id, student_id]);
-    
-    if (checkResult.rows.length > 0) {
-      // Update existing
-      const updateQuery = `
-        UPDATE assignment_submissions
-        SET answers = $1, score = $2, status = $3, created_at = NOW()
-        WHERE assignment_id = $4 AND student_id = $5
-        RETURNING *
-      `;
-      const updateResult = await db.query(updateQuery, [
-        answers ? JSON.stringify(answers) : null, score || 0, status || 'submitted', assignment_id, student_id
-      ]);
-      return updateResult.rows[0];
-    } else {
-      // Insert new
-      const insertQuery = `
-        INSERT INTO assignment_submissions (assignment_id, student_id, answers, score, status)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING *
-      `;
-      const insertResult = await db.query(insertQuery, [
-        assignment_id, student_id, answers ? JSON.stringify(answers) : null, score || 0, status || 'submitted'
-      ]);
-      return insertResult.rows[0];
+    const existing = await prisma.assignment_submissions.findUnique({
+      where: { assignment_id_student_id: { assignment_id: Number(assignment_id), student_id } }
+    });
+
+    const submissionData = {
+      answers: answers || undefined,
+      score: score || 0,
+      status: status || 'submitted',
+      created_at: new Date()
+    };
+
+    if (existing) {
+      return prisma.assignment_submissions.update({
+        where: { id: existing.id },
+        data: submissionData
+      });
     }
+
+    return prisma.assignment_submissions.create({
+      data: {
+        assignment_id: Number(assignment_id),
+        student_id,
+        ...submissionData
+      }
+    });
   }
-  
+
   async getSubmission(assignmentId, studentId) {
-    const query = 'SELECT * FROM assignment_submissions WHERE assignment_id = $1 AND student_id = $2';
-    const result = await db.query(query, [assignmentId, studentId]);
-    return result.rows[0];
+    return prisma.assignment_submissions.findUnique({
+      where: { assignment_id_student_id: { assignment_id: Number(assignmentId), student_id: studentId } }
+    });
   }
 }
 

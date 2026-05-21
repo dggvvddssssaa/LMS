@@ -13,6 +13,9 @@ model User {
   email              String               @unique @db.VarChar(255)
   password           String               @db.VarChar(255)
   role               String?              @default("student") @db.VarChar(50)
+  avatar             String?              @db.VarChar(500)
+  phone              String?              @db.VarChar(20)
+  bio                String?
   is_verified        Boolean?             @default(false)
   created_at         DateTime?            @default(now()) @db.Timestamp(6)
   courses            Course[]             @relation("InstructorCourses")
@@ -23,6 +26,10 @@ model User {
   session_attendance     session_attendance[]
   assignment_submissions assignment_submissions[]
   teaching_sessions      sessions[]           @relation("SessionTeacher")
+  course_answers         course_answers[]
+  course_questions       course_questions[]
+  audit_logs             audit_log[]
+  qa_reactions           course_qa_reactions[]
 
   @@map("users")
 }
@@ -40,6 +47,8 @@ model Enrollment {
   lesson_progress lesson_progress[]
 
   @@unique([student_id, course_id])
+  @@index([student_id])
+  @@index([course_id])
   @@map("enrollments")
 }
 
@@ -71,7 +80,7 @@ model Course {
   description            String?
   instructor_id          Int?
   thumbnail              String?
-  type                   String?        @default("recorded") @db.VarChar(20)
+  type                   String?        @default("video") @db.VarChar(20)
   price                  Decimal?       @default(0) @db.Decimal(10, 2)
   is_published           Boolean?       @default(false)
   created_at             DateTime?      @default(now()) @db.Timestamp(6)
@@ -105,6 +114,8 @@ model Course {
   reviews                reviews[]
   sections               Section[]
   assignments            assignments[]
+  course_questions       course_questions[]
+  course_categories      course_categories[]
 
   @@map("courses")
 }
@@ -119,6 +130,7 @@ model Section {
   assignments assignments[]
   course      Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
+  @@index([course_id])
   @@map("sections")
 }
 
@@ -140,7 +152,9 @@ model Lesson {
   description     String?
   section         Section?  @relation(fields: [section_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   assignments     assignments[]
+  course_questions       course_questions[]
 
+  @@index([section_id])
   @@map("lessons")
 }
 
@@ -154,6 +168,7 @@ model lesson_progress {
   enrollments   Enrollment? @relation(fields: [enrollment_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([enrollment_id, lesson_id])
+  @@index([lesson_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -168,7 +183,9 @@ model live_classes {
   start_time      DateTime?  @db.Timestamp(6)
   end_time        DateTime?  @db.Timestamp(6)
   courses         Course?    @relation(fields: [course_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
-  sessions        sessions[]
+  sessions    sessions[]
+
+  @@index([course_id])
 }
 
 model materials {
@@ -190,6 +207,9 @@ model notifications {
   link       String?
   created_at DateTime? @default(now()) @db.Timestamp(6)
   users      User?     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([user_id, is_read])
+  @@index([user_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -204,6 +224,7 @@ model reviews {
   users      User?     @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
   @@unique([course_id, student_id])
+  @@index([student_id])
 }
 
 model session_attendance {
@@ -238,6 +259,10 @@ model sessions {
   session_attendance session_attendance[]
   live_classes       live_classes?        @relation(fields: [live_class_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   assignments        assignments[]
+
+  @@index([live_class_id, start_time])
+  @@index([status])
+  @@index([teacher_id])
 }
 
 model assignments {
@@ -248,7 +273,8 @@ model assignments {
   section_id  Int?
   title       String    @db.VarChar(255)
   description String?
-  deadline    DateTime? @db.Timestamp(6)
+  deadline           DateTime? @db.Timestamp(6)
+  time_limit_minutes Int?
   kind             String?   @default("mcq") @db.VarChar(50)
   assignment_scope String?   @default("lesson") @db.VarChar(50)
   payload          Json?
@@ -274,6 +300,7 @@ model assignment_submissions {
   student       User?        @relation(fields: [student_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
   
   @@unique([assignment_id, student_id])
+  @@index([student_id])
 }
 
 model categories {
@@ -281,6 +308,7 @@ model categories {
   name       String    @db.VarChar(255)
   slug       String    @unique @db.VarChar(255)
   created_at DateTime? @default(now()) @db.Timestamp(6)
+  course_categories course_categories[]
 }
 
 model certificates {
@@ -350,11 +378,17 @@ model course_answers {
   is_accepted Boolean?  @default(false)
   created_at  DateTime? @default(now()) @db.Timestamp(6)
   updated_at  DateTime? @default(now()) @db.Timestamp(6)
+  question    course_questions? @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  author      User?             @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([question_id])
 }
 
 model course_categories {
   course_id   Int
   category_id Int
+  course      Course?     @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  categories  categories? @relation(fields: [category_id], references: [id], onDelete: Cascade)
 
   @@id([course_id, category_id])
 }
@@ -377,6 +411,31 @@ model course_questions {
   content    String
   created_at DateTime? @default(now()) @db.Timestamp(6)
   updated_at DateTime? @default(now()) @db.Timestamp(6)
+  answers    course_answers[]
+  author     User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  course     Course?   @relation(fields: [course_id], references: [id], onDelete: Cascade)
+  lesson     Lesson?   @relation(fields: [lesson_id], references: [id], onDelete: SetNull)
+
+  @@index([course_id])
+  @@index([user_id])
+  @@index([course_id, lesson_id])
+}
+
+model course_qa_reactions {
+  id          Int      @id @default(autoincrement())
+  target_type String   @db.VarChar(20)
+  target_id   Int
+  user_id     Int
+  emoji       String   @db.VarChar(10)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+  updated_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  user        User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([target_type, target_id, user_id, emoji])
+  @@index([target_type, target_id])
+  @@index([user_id])
 }
 
 model global_settings {
@@ -407,4 +466,21 @@ model rooms {
   room_uuid  String    @unique @db.VarChar(255)
   is_active  Boolean?  @default(false)
   created_at DateTime? @default(now()) @db.Timestamp(6)
+}
+
+model audit_log {
+  id          Int       @id @default(autoincrement())
+  user_id     Int?
+  action      String    @db.VarChar(100)
+  resource    String?   @db.VarChar(100)
+  resource_id Int?
+  details     Json?
+  ip_address  String?   @db.VarChar(45)
+  created_at  DateTime? @default(now()) @db.Timestamp(6)
+
+  user        User?     @relation(fields: [user_id], references: [id], onDelete: SetNull)
+
+  @@index([user_id])
+  @@index([action])
+  @@index([created_at])
 }

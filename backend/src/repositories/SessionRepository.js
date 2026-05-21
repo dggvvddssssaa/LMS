@@ -1,227 +1,235 @@
 const crypto = require('crypto');
-const db = require('../config/db');
+const prisma = require('../config/prisma');
+
+const sessionInclude = {
+  live_classes: { select: { course_id: true } },
+  teacher: { select: { name: true, email: true } }
+};
 
 class SessionRepository {
   async create({ liveClassId, title, start_time, end_time, teacher_id, join_open_minutes }) {
     const meeting_id = crypto.randomUUID();
-    const query = `
-      INSERT INTO sessions (live_class_id, title, start_time, end_time, teacher_id, join_open_minutes, meeting_id, status)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'scheduled')
-      RETURNING *
-    `;
-    const result = await db.query(query, [
-      liveClassId, title, start_time, end_time || null,
-      teacher_id || null, join_open_minutes || 15, meeting_id
-    ]);
-    return result.rows[0];
+    return prisma.sessions.create({
+      data: {
+        live_class_id: liveClassId ? Number(liveClassId) : null,
+        title,
+        start_time: new Date(start_time),
+        end_time: end_time ? new Date(end_time) : null,
+        teacher_id: teacher_id ? Number(teacher_id) : null,
+        join_open_minutes: join_open_minutes || 15,
+        meeting_id,
+        status: 'scheduled'
+      }
+    });
   }
 
   async findByLiveClassId(liveClassId) {
-    const query = `
-      SELECT s.*, u.name as teacher_name, u.email as teacher_email
-      FROM sessions s
-      LEFT JOIN users u ON s.teacher_id = u.id
-      WHERE s.live_class_id = $1
-      ORDER BY s.start_time ASC
-    `;
-    const result = await db.query(query, [liveClassId]);
-    return result.rows;
+    return prisma.sessions.findMany({
+      where: { live_class_id: Number(liveClassId) },
+      include: sessionInclude,
+      orderBy: { start_time: 'asc' }
+    });
   }
 
   async findById(id) {
-    const query = `
-      SELECT s.*, lc.course_id,
-             u.name as teacher_name, u.email as teacher_email,
-             c.title as course_title, c.instructor_id
-      FROM sessions s
-      LEFT JOIN live_classes lc ON s.live_class_id = lc.id
-      LEFT JOIN courses c ON lc.course_id = c.id
-      LEFT JOIN users u ON s.teacher_id = u.id
-      WHERE s.id = $1
-    `;
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    const s = await prisma.sessions.findUnique({
+      where: { id: Number(id) },
+      include: {
+        live_classes: { select: { course_id: true } },
+        teacher: { select: { name: true, email: true } }
+      }
+    });
+    if (!s) return null;
+    const course = s.live_classes?.course_id
+      ? await prisma.course.findUnique({ where: { id: s.live_classes.course_id }, select: { title: true, instructor_id: true } })
+      : null;
+    return {
+      ...s,
+      course_id: s.live_classes?.course_id || null,
+      course_title: course?.title || null,
+      instructor_id: course?.instructor_id || null
+    };
   }
 
   async findByMeetingId(meetingId) {
-    const query = `
-      SELECT s.*, lc.course_id,
-             u.name as teacher_name, u.email as teacher_email,
-             c.title as course_title, c.instructor_id
-      FROM sessions s
-      LEFT JOIN live_classes lc ON s.live_class_id = lc.id
-      LEFT JOIN courses c ON lc.course_id = c.id
-      LEFT JOIN users u ON s.teacher_id = u.id
-      WHERE s.meeting_id = $1
-    `;
-    const result = await db.query(query, [meetingId]);
-    return result.rows[0];
+    const s = await prisma.sessions.findFirst({
+      where: { meeting_id: meetingId },
+      include: {
+        live_classes: { select: { course_id: true } },
+        teacher: { select: { name: true, email: true } }
+      }
+    });
+    if (!s) return null;
+    const course = s.live_classes?.course_id
+      ? await prisma.course.findUnique({ where: { id: s.live_classes.course_id }, select: { title: true, instructor_id: true } })
+      : null;
+    return {
+      ...s,
+      course_id: s.live_classes?.course_id || null,
+      course_title: course?.title || null,
+      instructor_id: course?.instructor_id || null
+    };
   }
 
   async update(id, data) {
     const allowedFields = ['title', 'start_time', 'end_time', 'status', 'teacher_id',
       'opened_at', 'closed_at', 'join_open_minutes', 'recording_url', 'notes'];
-    const fields = [];
-    const values = [];
-    let idx = 1;
-
+    const cleanData = {};
     for (const key of Object.keys(data)) {
-      if (allowedFields.includes(key)) {
-        fields.push(`${key} = $${idx}`);
-        values.push(data[key]);
-        idx++;
-      }
+      if (allowedFields.includes(key)) cleanData[key] = data[key];
     }
-
-    if (fields.length === 0) return null;
-
-    const query = `UPDATE sessions SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`;
-    values.push(id);
-    const result = await db.query(query, values);
-    return result.rows[0];
+    if (Object.keys(cleanData).length === 0) return null;
+    return prisma.sessions.update({
+      where: { id: Number(id) },
+      data: cleanData
+    });
   }
 
   async openSession(id) {
-    const query = `
-      UPDATE sessions
-      SET status = 'open', opened_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `;
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.sessions.update({
+      where: { id: Number(id) },
+      data: { status: 'open', opened_at: new Date() }
+    });
   }
 
   async startSession(id) {
-    const query = `
-      UPDATE sessions
-      SET status = 'ongoing'
-      WHERE id = $1
-      RETURNING *
-    `;
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.sessions.update({
+      where: { id: Number(id) },
+      data: { status: 'ongoing' }
+    });
   }
 
   async endSession(id) {
-    const query = `
-      UPDATE sessions
-      SET status = 'ended', closed_at = NOW()
-      WHERE id = $1
-      RETURNING *
-    `;
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.sessions.update({
+      where: { id: Number(id) },
+      data: { status: 'ended', closed_at: new Date() }
+    });
   }
 
   async delete(id) {
-    const query = 'DELETE FROM sessions WHERE id = $1 RETURNING id';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+    return prisma.sessions.delete({ where: { id: Number(id) }, select: { id: true } });
   }
 
   async findActiveSessions() {
-    const query = `
-      SELECT s.id, s.title, s.start_time, s.end_time, s.status, s.meeting_id,
-             s.teacher_id, s.opened_at, s.closed_at,
-             c.title as course_title, c.id as course_id,
-             u.name as instructor_name, u.email as instructor_email,
-             tu.name as teacher_name, tu.email as teacher_email
-      FROM sessions s
-      JOIN live_classes lc ON s.live_class_id = lc.id
-      JOIN courses c ON lc.course_id = c.id
-      LEFT JOIN users u ON c.instructor_id = u.id
-      LEFT JOIN users tu ON s.teacher_id = tu.id
-      WHERE s.status IN ('scheduled', 'open', 'ongoing')
-      ORDER BY s.start_time ASC
-    `;
-    const result = await db.query(query);
-    return result.rows;
+    const sessions = await prisma.sessions.findMany({
+      where: { status: { in: ['scheduled', 'open', 'ongoing'] } },
+      include: {
+        live_classes: {
+          include: {
+            courses: {
+              select: { id: true, title: true, instructor: { select: { name: true, email: true } } }
+            }
+          }
+        },
+        teacher: { select: { name: true, email: true } }
+      },
+      orderBy: { start_time: 'asc' }
+    });
+
+    return sessions.map(s => ({
+      id: s.id,
+      title: s.title,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      status: s.status,
+      meeting_id: s.meeting_id,
+      teacher_id: s.teacher_id,
+      opened_at: s.opened_at,
+      closed_at: s.closed_at,
+      course_id: s.live_classes?.courses?.id || null,
+      course_title: s.live_classes?.courses?.title || null,
+      instructor_name: s.live_classes?.courses?.instructor?.name || null,
+      instructor_email: s.live_classes?.courses?.instructor?.email || null,
+      teacher_name: s.teacher?.name || null,
+      teacher_email: s.teacher?.email || null
+    }));
   }
 
   async findToday() {
-    const query = `
-      SELECT s.id, s.title, s.start_time, s.end_time, s.status, s.meeting_id,
-             s.teacher_id, s.opened_at, s.join_open_minutes,
-             c.title as course_title, c.id as course_id,
-             tu.name as teacher_name
-      FROM sessions s
-      JOIN live_classes lc ON s.live_class_id = lc.id
-      JOIN courses c ON lc.course_id = c.id
-      LEFT JOIN users tu ON s.teacher_id = tu.id
-      WHERE s.start_time >= CURRENT_DATE
-        AND s.start_time < CURRENT_DATE + INTERVAL '1 day'
-      ORDER BY s.start_time ASC
-    `;
-    const result = await db.query(query);
-    return result.rows;
-  }
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
 
-  async findByTeacherToday(teacherId) {
-    const query = `
-      SELECT s.id, s.title, s.start_time, s.end_time, s.status, s.meeting_id,
-             s.teacher_id, s.opened_at, s.join_open_minutes,
-             c.title as course_title, c.id as course_id
-      FROM sessions s
-      JOIN live_classes lc ON s.live_class_id = lc.id
-      JOIN courses c ON lc.course_id = c.id
-      WHERE s.teacher_id = $1
-        AND s.start_time >= CURRENT_DATE
-        AND s.start_time < CURRENT_DATE + INTERVAL '1 day'
-      ORDER BY s.start_time ASC
-    `;
-    const result = await db.query(query, [teacherId]);
-    return result.rows;
+    const sessions = await prisma.sessions.findMany({
+      where: { start_time: { gte: startOfDay, lt: endOfDay } },
+      include: {
+        live_classes: { include: { courses: { select: { id: true, title: true } } } },
+        teacher: { select: { name: true } }
+      },
+      orderBy: { start_time: 'asc' }
+    });
+
+    return sessions.map(s => ({
+      id: s.id,
+      title: s.title,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      status: s.status,
+      meeting_id: s.meeting_id,
+      teacher_id: s.teacher_id,
+      opened_at: s.opened_at,
+      join_open_minutes: s.join_open_minutes,
+      course_id: s.live_classes?.courses?.id || null,
+      course_title: s.live_classes?.courses?.title || null,
+      teacher_name: s.teacher?.name || null
+    }));
   }
 
   async findByTeacherUpcoming(teacherId) {
-    const query = `
-      SELECT s.id, s.title, s.start_time, s.end_time, s.status, s.meeting_id,
-             s.teacher_id, s.opened_at, s.join_open_minutes,
-             c.title as course_title, c.id as course_id
-      FROM sessions s
-      JOIN live_classes lc ON s.live_class_id = lc.id
-      JOIN courses c ON lc.course_id = c.id
-      WHERE s.teacher_id = $1
-        AND s.status IN ('scheduled', 'open', 'ongoing')
-        AND s.start_time >= CURRENT_DATE
-      ORDER BY s.start_time ASC
-    `;
-    const result = await db.query(query, [teacherId]);
-    return result.rows;
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    const sessions = await prisma.sessions.findMany({
+      where: {
+        teacher_id: Number(teacherId),
+        status: { in: ['scheduled', 'open', 'ongoing'] },
+        start_time: { gte: now }
+      },
+      include: {
+        live_classes: { include: { courses: { select: { id: true, title: true } } } },
+        teacher: { select: { name: true } }
+      },
+      orderBy: { start_time: 'asc' }
+    });
+
+    return sessions.map(s => ({
+      id: s.id,
+      title: s.title,
+      start_time: s.start_time,
+      end_time: s.end_time,
+      status: s.status,
+      meeting_id: s.meeting_id,
+      teacher_id: s.teacher_id,
+      opened_at: s.opened_at,
+      join_open_minutes: s.join_open_minutes,
+      course_id: s.live_classes?.courses?.id || null,
+      course_title: s.live_classes?.courses?.title || null,
+      teacher_name: s.teacher?.name || null
+    }));
   }
 
-  // Attendance
   async recordJoin(sessionId, userId) {
-    // Check for existing open attendance row (no left_at) to prevent duplicates on reconnect
-    const existingQuery = `
-      SELECT * FROM session_attendance
-      WHERE session_id = $1 AND student_id = $2 AND left_at IS NULL
-      ORDER BY joined_at DESC LIMIT 1
-    `;
-    const existing = await db.query(existingQuery, [sessionId, userId]);
-    if (existing.rows.length > 0) {
-      return existing.rows[0]; // Already has an open attendance, return it
-    }
+    const existing = await prisma.session_attendance.findFirst({
+      where: { session_id: Number(sessionId), student_id: userId, left_at: null },
+      orderBy: { joined_at: 'desc' }
+    });
+    if (existing) return existing;
 
-    const query = `
-      INSERT INTO session_attendance (session_id, student_id, joined_at)
-      VALUES ($1, $2, NOW())
-      RETURNING *
-    `;
-    const result = await db.query(query, [sessionId, userId]);
-    return result.rows[0];
+    return prisma.session_attendance.create({
+      data: { session_id: Number(sessionId), student_id: userId, joined_at: new Date() }
+    });
   }
 
   async recordLeave(sessionId, userId) {
-    const query = `
-      UPDATE session_attendance
-      SET left_at = NOW()
-      WHERE session_id = $1 AND student_id = $2 AND left_at IS NULL
-      RETURNING *
-    `;
-    const result = await db.query(query, [sessionId, userId]);
-    return result.rows[0];
+    const attendance = await prisma.session_attendance.findFirst({
+      where: { session_id: Number(sessionId), student_id: userId, left_at: null }
+    });
+    if (!attendance) return null;
+    return prisma.session_attendance.update({
+      where: { id: attendance.id },
+      data: { left_at: new Date() }
+    });
   }
 }
 

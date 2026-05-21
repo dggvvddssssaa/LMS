@@ -9,6 +9,9 @@ import { ErrorState, LoadingState } from "../../components/ui";
 import AssignmentViewer from "./components/AssignmentViewer";
 import { useToast } from "../../contexts/ToastContext";
 import { normalizeYouTubeUrl, isYouTubeUrl } from "../../utils/youtube";
+import ErrorBoundary from "../../components/ErrorBoundary";
+
+const EMPTY_SECTIONS = [];
 
 const LessonLearning = () => {
   const { id } = useParams();
@@ -32,26 +35,17 @@ const LessonLearning = () => {
       const outlineRes = await courseService.getLearningOutline(id);
       outline = outlineRes?.data || {};
     } catch (err) {
-      if (err.response?.status === 403) {
-         throw new Error(err.response?.data?.message || "Bạn chưa ghi danh hoặc không có quyền xem khóa học này.");
+      const status = err.status;
+      if (status === 403) {
+         throw Object.assign(new Error(err.message || "Bạn chưa ghi danh hoặc không có quyền xem khóa học này."), { isEnrollmentError: true });
       }
-      if (err.response?.status === 401) {
-         throw new Error("Vui lòng đăng nhập để xem nội dung khóa học.");
+      if (status === 401) {
+         window.location.href = `/login?from=/course/${id}/learn`;
+         return new Promise(() => {}); // pend forever
       }
       
-      console.warn("Failed to get learning outline, falling back to basic course data", err);
-      const courseRes = await courseService.getCourseById(id);
-      outline.course = courseRes?.data;
-      outline.sections = outline.course?.sections || [];
-      
-      if (user?.role === "student") {
-        try {
-          const progressRes = await enrollmentService.getProgress(id);
-          outline.progress = progressRes?.data;
-        } catch {
-          outline.progress = { overallProgress: 0, lessons: {} };
-        }
-      }
+      // Throw 500/network errors to let useAsyncData render the ErrorState with retry button
+      throw err;
     }
     
     const course = outline.course;
@@ -78,9 +72,10 @@ const LessonLearning = () => {
     return { course, progress, outlineSections, finalAssignment, certificate, liveClass, sessions };
   }, [id, user?.role]);
 
-  const course = data?.course || null;
+  const courseData = data?.course || null;
+  const course = courseData ? { ...courseData, type: courseData.type === 'recorded' ? 'video' : courseData.type } : null;
   const sessions = data?.sessions || [];
-  const outlineSections = data?.outlineSections || [];
+  const outlineSections = data?.outlineSections ?? EMPTY_SECTIONS;
   const finalAssignment = data?.finalAssignment || null;
 
   useEffect(() => {
@@ -89,28 +84,31 @@ const LessonLearning = () => {
     }
   }, [data?.certificate]);
 
+  const sections = useMemo(() => {
+    const list = outlineSections?.length ? outlineSections : (course?.sections || []);
+    return Array.isArray(list) ? list : [];
+  }, [course, outlineSections]);
+  const totalLessons = useMemo(() => sections.reduce((sum, section) => sum + (section.lessons?.length || 0), 0), [sections]);
+
   useEffect(() => {
     if (course?.type === 'live' && sessions.length > 0 && !activeSession) {
       // Auto select nearest or first session
       setActiveSession(sessions[0]);
-    } else if (outlineSections?.length) {
-      const firstSection = outlineSections[0];
-      setExpandedSections({ [firstSection.id]: true });
+    } else if (sections?.length) {
+      const firstSection = sections[0];
+      setExpandedSections((prev) => ({ [firstSection.id]: true, ...prev }));
       if (firstSection.lessons?.length && !activeLesson) {
         setActiveLesson(firstSection.lessons[0]);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [course?.type, sessions, outlineSections]);
+  }, [course?.type, sessions, sections]);
 
   useEffect(() => {
     if (data?.progress) {
-      setProgressData(data.progress);
+      setProgressData(data.progress || { overallProgress: 0, lessons: {} });
     }
   }, [data]);
-
-  const sections = useMemo(() => outlineSections.length ? outlineSections : (course?.sections || []), [course, outlineSections]);
-  const totalLessons = useMemo(() => sections.reduce((sum, section) => sum + (section.lessons?.length || 0), 0), [sections]);
 
   const toggleSection = (sectionId) => {
     setExpandedSections((prev) => ({ ...prev, [sectionId]: !prev[sectionId] }));
@@ -128,17 +126,20 @@ const LessonLearning = () => {
       });
 
       const progress = res?.data?.courseProgress?.progressPercent || progressData.overallProgress;
-      setProgressData((prev) => ({
-        ...prev,
-        overallProgress: progress,
-        lessons: {
-          ...prev.lessons,
-          [activeLesson.id]: {
-            ...(prev.lessons[activeLesson.id] || {}),
-            isCompleted,
+      setProgressData((prev) => {
+        const prevLessons = prev?.lessons || {};
+        return {
+          ...prev,
+          overallProgress: progress,
+          lessons: {
+            ...prevLessons,
+            [activeLesson.id]: {
+              ...(prevLessons[activeLesson.id] || {}),
+              isCompleted,
+            },
           },
-        },
-      }));
+        };
+      });
     } finally {
       setIsMarkingComplete(false);
     }
@@ -266,14 +267,28 @@ const LessonLearning = () => {
       }
     }
 
-    if (activeLesson.content_type === "video") {
+    // Deduce content_type if missing: check for video keywords or extensions
+    let contentType = activeLesson?.content_type;
+    if (!contentType && activeLesson) {
       const url = activeLesson.content_url || activeLesson.video_url || "";
+      const isVideo = isYouTubeUrl(url) || url.includes("embed") || /\.(mp4|mkv|webm|avi|mov)($|\?)/i.test(url);
+      if (isVideo || activeLesson.video_url) {
+        contentType = "video";
+      } else if (activeLesson.content_url) {
+        contentType = "document";
+      } else {
+        contentType = "text";
+      }
+    }
+
+    if (contentType === "video") {
+      const url = activeLesson?.content_url || activeLesson?.video_url || "";
       if (!url) {
         return <div className="h-full flex items-center justify-center text-slate-400 text-lg font-medium">Bài học chưa có video.</div>;
       }
       if (isYouTubeUrl(url) || url.includes("embed")) {
         const embedUrl = normalizeYouTubeUrl(url);
-        if (!embedUrl || embedUrl === url && !url.includes("embed")) {
+        if (!embedUrl || (embedUrl === url && !url.includes("embed"))) {
            return <div className="h-full flex flex-col items-center justify-center text-slate-400 text-lg gap-3">
              <p>Không thể tải video trực tiếp.</p>
              <a href={url} target="_blank" rel="noopener noreferrer" className="px-4 py-2 bg-red-600 text-white rounded-xl text-sm font-bold">Mở trên YouTube</a>
@@ -294,11 +309,11 @@ const LessonLearning = () => {
       return <video className="w-full h-full object-contain rounded-2xl bg-black" controls src={url} />;
     }
 
-    if (activeLesson.content_type === "document") {
+    if (contentType === "document") {
       return (
         <div className="h-full flex flex-col items-center justify-center text-center p-10 bg-slate-50 rounded-2xl border border-slate-200">
-          <h2 className="text-xl font-bold text-slate-800 mb-2">{activeLesson.title}</h2>
-          {activeLesson.content_url ? (
+          <h2 className="text-xl font-bold text-slate-800 mb-2">{activeLesson?.title}</h2>
+          {activeLesson?.content_url ? (
             <a href={activeLesson.content_url} target="_blank" rel="noopener noreferrer" className="bg-blue-600 text-white font-bold px-6 py-3 rounded-xl hover:bg-blue-700">
               Mở tài liệu
             </a>
@@ -311,8 +326,8 @@ const LessonLearning = () => {
 
     return (
       <div className="h-full overflow-y-auto p-6 md:p-8 bg-white rounded-2xl border border-slate-200">
-        <h2 className="text-2xl font-bold text-slate-800 mb-4">{activeLesson.title}</h2>
-        <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">{activeLesson.content_text || "Nội dung đang được cập nhật..."}</div>
+        <h2 className="text-2xl font-bold text-slate-800 mb-4">{activeLesson?.title}</h2>
+        <div className="whitespace-pre-wrap text-slate-700 leading-relaxed">{activeLesson?.content_text || "Nội dung đang được cập nhật..."}</div>
       </div>
     );
   };
@@ -322,6 +337,20 @@ const LessonLearning = () => {
   }
 
   if (error) {
+    if (error.isEnrollmentError) {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+          <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 text-center max-w-md w-full">
+            <div className="text-5xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-slate-800 mb-2">Bạn chưa ghi danh khóa học này</h2>
+            <p className="text-slate-500 mb-8">{error.message}</p>
+            <Link to={`/course/${id}`} className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all block">
+              Xem chi tiết khóa học
+            </Link>
+          </div>
+        </div>
+      );
+    }
     return <ErrorState message={error.message} onRetry={retry} />;
   }
 
@@ -353,7 +382,11 @@ const LessonLearning = () => {
       <div className="container mx-auto px-4 lg:px-8 py-6">
         <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_360px] gap-6">
           <div className="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 min-h-[65vh] flex flex-col">
-            <div className="flex-1 min-h-[380px]">{renderContent()}</div>
+            <div className="flex-1 min-h-[380px]">
+              <ErrorBoundary compact={true}>
+                {renderContent()}
+              </ErrorBoundary>
+            </div>
             
             {/* Nơi hiển thị Bài tập */}
             {activeLesson && course?.type !== "live" && user?.role === "student" && (
@@ -364,15 +397,15 @@ const LessonLearning = () => {
               <div className="pt-5 mt-5 border-t border-slate-100 flex items-center justify-between">
                 <h2 className="text-xl font-bold text-slate-800">{activeLesson.title}</h2>
                 <button
-                  onClick={() => handleMarkComplete(!progressData.lessons[activeLesson.id]?.isCompleted)}
+                  onClick={() => handleMarkComplete(!progressData?.lessons?.[activeLesson.id]?.isCompleted)}
                   disabled={isMarkingComplete}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-sm transition-all ${
-                    progressData.lessons[activeLesson.id]?.isCompleted
+                    progressData?.lessons?.[activeLesson.id]?.isCompleted
                       ? "bg-green-100 text-green-700"
                       : "bg-blue-600 text-white hover:bg-blue-700"
                   }`}
                 >
-                  {isMarkingComplete ? "Đang lưu..." : progressData.lessons[activeLesson.id]?.isCompleted ? "Đã hoàn thành" : "Hoàn thành bài học"}
+                  {isMarkingComplete ? "Đang lưu..." : progressData?.lessons?.[activeLesson.id]?.isCompleted ? "Đã hoàn thành" : "Hoàn thành bài học"}
                 </button>
               </div>
             )}
@@ -425,11 +458,20 @@ const LessonLearning = () => {
 
             {sidebarTab === "content" ? (
               <div className="flex-1 overflow-y-auto">
-                {(course?.type === 'recorded' || course?.type === 'hybrid' || !course?.type) && (
+                {(course?.type === 'video' || course?.type === 'hybrid' || !course?.type) && (
                   <>
+                    {outlineSections?.length === 0 && course?.sections?.length > 0 && (
+                      <div className="p-3 mx-4 mt-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>Không tải được tiến độ học. Đang hiển thị danh sách bài học tĩnh.</span>
+                      </div>
+                    )}
                     <div className="p-4 border-b border-slate-100 bg-slate-50/50 text-xs font-bold text-slate-500 uppercase tracking-wider">
                       {sections.length} phần · {totalLessons} bài
                     </div>
+                    {sections.length === 0 && (
+                      <div className="p-8 text-center text-slate-500">Chưa có nội dung bài học.</div>
+                    )}
                     {sections.map((section, sIdx) => (
                   <div key={section.id} className="border-b border-slate-100 last:border-b-0">
                     <button onClick={() => toggleSection(section.id)} className="w-full text-left p-4 hover:bg-slate-50 flex items-center justify-between">
@@ -440,14 +482,14 @@ const LessonLearning = () => {
                           <span className="text-[10px] text-slate-500">{section.lessons?.length || 0} bài</span>
                         </div>
                       </div>
-                      <span className="text-xs text-slate-400">{expandedSections[section.id] ? "?" : "?"}</span>
+                      <span className="text-xs text-slate-400">{expandedSections[section.id] ? "▲" : "▼"}</span>
                     </button>
 
                     {expandedSections[section.id] && (
                       <div className="px-2 pb-2">
                         {(section.lessons || []).map((lesson, lIdx) => {
                           const isActive = activeLesson?.id === lesson.id;
-                          const isCompleted = progressData.lessons[lesson.id]?.isCompleted;
+                          const isCompleted = progressData?.lessons?.[lesson.id]?.isCompleted;
 
                           return (
                             <button
@@ -468,7 +510,7 @@ const LessonLearning = () => {
                             </button>
                           );
                         })}
-                        {section.assignments && section.assignments.map((assignment) => {
+                        {(section.assignments || []).map((assignment) => {
                           const isAssignActive = activeAssignment?.type === 'section' && activeAssignment?.id === section.id;
                           return (
                           <button key={`assign-${assignment.id}`} onClick={() => { setActiveAssignment({ type: 'section', id: section.id }); setActiveLesson(null); setActiveSession(null); }} className={`w-full text-left mt-2 p-3 border rounded-xl flex items-center justify-between transition-all ${isAssignActive ? "bg-indigo-100 border-indigo-300" : "bg-indigo-50 border-indigo-100 hover:bg-indigo-100/70"}`}>
@@ -514,7 +556,7 @@ const LessonLearning = () => {
                         return (
                           <button
                             key={session.id}
-                            onClick={() => { setActiveSession(session); setActiveLesson(null); }}
+                            onClick={() => { setActiveSession(session); setActiveLesson(null); setActiveAssignment(null); }}
                             className={`w-full text-left p-4 hover:bg-slate-50 flex items-start gap-3 transition-colors ${isActive ? 'bg-blue-50 border-l-4 border-blue-600' : ''}`}
                           >
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs shrink-0">{idx + 1}</div>
@@ -539,7 +581,9 @@ const LessonLearning = () => {
               </div>
             ) : (
               <div className="flex-1 overflow-hidden">
-                <CourseQA courseId={id} activeLessonId={activeLesson?.id} />
+                <ErrorBoundary compact={true}>
+                  <CourseQA courseId={id} activeLessonId={activeLesson?.id} />
+                </ErrorBoundary>
               </div>
             )}
           </aside>

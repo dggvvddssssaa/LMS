@@ -1,41 +1,128 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { qaService } from '../services';
 import useAuthStore from '../store/useAuthStore';
 import { useToast } from '../contexts/ToastContext';
+import '../styles/CourseQA.css';
+
+const EMOJI_LIST = ['👍', '❤️', '😂', '😮', '🎉'];
+
+const formatTimeAgo = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000);
+    if (diff < 60) return 'vừa xong';
+    if (diff < 3600) return `${Math.floor(diff / 60)} phút trước`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} giờ trước`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)} ngày trước`;
+    return date.toLocaleDateString('vi-VN');
+};
+
+const getAvatarClass = (role) => {
+    if (role === 'admin') return 'qa-avatar qa-avatar-admin qa-answer-avatar';
+    if (role === 'instructor') return 'qa-avatar qa-avatar-instructor qa-answer-avatar';
+    return 'qa-avatar qa-avatar-student qa-answer-avatar';
+};
+
+const getFullAvatarClass = (role) => {
+    if (role === 'admin') return 'qa-avatar qa-avatar-admin';
+    if (role === 'instructor') return 'qa-avatar qa-avatar-instructor';
+    return 'qa-avatar qa-avatar-student';
+};
+
+// Reaction Bar component
+const ReactionBar = ({ reactions = [], myReactions = [], onToggle, targetType, targetId }) => {
+    const [showPicker, setShowPicker] = useState(false);
+    const pickerRef = useRef(null);
+
+    useEffect(() => {
+        const handleClick = (e) => {
+            if (pickerRef.current && !pickerRef.current.contains(e.target)) {
+                setShowPicker(false);
+            }
+        };
+        if (showPicker) document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [showPicker]);
+
+    const handleEmojiClick = (emoji) => {
+        onToggle(targetType, targetId, emoji);
+        setShowPicker(false);
+    };
+
+    return (
+        <div className="qa-reaction-bar">
+            {reactions.filter(r => r.count > 0).map(r => (
+                <button
+                    key={r.emoji}
+                    className={`qa-reaction-btn ${myReactions.includes(r.emoji) ? 'active' : ''}`}
+                    onClick={() => onToggle(targetType, targetId, r.emoji)}
+                    title={r.emoji}
+                >
+                    <span>{r.emoji}</span>
+                    <span className="count">{r.count}</span>
+                </button>
+            ))}
+            <div ref={pickerRef} style={{ position: 'relative', display: 'inline-flex' }}>
+                <button
+                    className="qa-add-reaction"
+                    onClick={() => setShowPicker(!showPicker)}
+                    title="Thêm reaction"
+                >
+                    😊
+                </button>
+                {showPicker && (
+                    <div className="qa-emoji-picker">
+                        {EMOJI_LIST.map(emoji => (
+                            <button key={emoji} onClick={() => handleEmojiClick(emoji)}>
+                                {emoji}
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
 
 const CourseQA = ({ courseId, activeLessonId }) => {
     const [questions, setQuestions] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [showComposer, setShowComposer] = useState(false);
     const [newQuestion, setNewQuestion] = useState({ title: '', content: '' });
+    const [posting, setPosting] = useState(false);
     const [replyingTo, setReplyingTo] = useState(null);
     const [replyContent, setReplyContent] = useState('');
+    const [expandedQuestions, setExpandedQuestions] = useState({});
     const { user } = useAuthStore();
     const { pushToast } = useToast();
 
-    useEffect(() => {
-        fetchQuestions();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [courseId, activeLessonId]);
-
     const fetchQuestions = useCallback(async () => {
         try {
+            setError(null);
             setLoading(true);
             const res = await qaService.getQuestions(courseId, activeLessonId);
             if (res.success) {
-                setQuestions(res.data);
+                setQuestions(res.data || []);
             }
         } catch (err) {
+            setError(err.message || 'Không thể tải câu hỏi');
             pushToast({ type: 'error', title: 'Không thể tải Q&A', message: err.message });
         } finally {
             setLoading(false);
         }
     }, [courseId, activeLessonId, pushToast]);
 
+    useEffect(() => {
+        fetchQuestions();
+    }, [fetchQuestions]);
+
     const handlePostQuestion = async (e) => {
         e.preventDefault();
         if (!newQuestion.title.trim() || !newQuestion.content.trim()) return;
 
         try {
+            setPosting(true);
             const res = await qaService.postQuestion({
                 courseId,
                 lessonId: activeLessonId,
@@ -44,10 +131,14 @@ const CourseQA = ({ courseId, activeLessonId }) => {
             });
             if (res.success) {
                 setNewQuestion({ title: '', content: '' });
+                setShowComposer(false);
                 fetchQuestions();
+                pushToast({ type: 'success', title: 'Đã đăng câu hỏi' });
             }
         } catch (err) {
             pushToast({ type: 'error', title: 'Không thể gửi câu hỏi', message: err.message });
+        } finally {
+            setPosting(false);
         }
     };
 
@@ -58,7 +149,9 @@ const CourseQA = ({ courseId, activeLessonId }) => {
             if (res.success) {
                 setReplyingTo(null);
                 setReplyContent('');
+                setExpandedQuestions(prev => ({ ...prev, [questionId]: true }));
                 fetchQuestions();
+                pushToast({ type: 'success', title: 'Đã gửi trả lời' });
             }
         } catch (err) {
             pushToast({ type: 'error', title: 'Không thể gửi trả lời', message: err.message });
@@ -76,97 +169,264 @@ const CourseQA = ({ courseId, activeLessonId }) => {
         }
     };
 
+    const handleToggleReaction = async (targetType, targetId, emoji) => {
+        // Optimistic update
+        setQuestions(prev => prev.map(q => {
+            if (targetType === 'question' && q.id === targetId) {
+                return applyOptimisticReaction(q, emoji);
+            }
+            return {
+                ...q,
+                answers: q.answers?.map(a => {
+                    if (targetType === 'answer' && a.id === targetId) {
+                        return applyOptimisticReaction(a, emoji);
+                    }
+                    return a;
+                })
+            };
+        }));
+
+        try {
+            await qaService.toggleReaction({ targetType, targetId, emoji });
+        } catch (err) {
+            // Revert on error by refetching
+            fetchQuestions();
+            pushToast({ type: 'error', title: 'Lỗi reaction', message: err.message });
+        }
+    };
+
+    const applyOptimisticReaction = (item, emoji) => {
+        const myReactions = item.my_reactions || [];
+        const reactions = [...(item.reactions || [])];
+        const isRemoving = myReactions.includes(emoji);
+
+        let newReactions;
+        if (isRemoving) {
+            newReactions = reactions.map(r =>
+                r.emoji === emoji ? { ...r, count: Math.max(0, r.count - 1) } : r
+            ).filter(r => r.count > 0);
+        } else {
+            const existing = reactions.find(r => r.emoji === emoji);
+            if (existing) {
+                newReactions = reactions.map(r =>
+                    r.emoji === emoji ? { ...r, count: r.count + 1 } : r
+                );
+            } else {
+                newReactions = [...reactions, { emoji, count: 1 }];
+            }
+        }
+
+        return {
+            ...item,
+            reactions: newReactions,
+            my_reactions: isRemoving
+                ? myReactions.filter(e => e !== emoji)
+                : [...myReactions, emoji]
+        };
+    };
+
+    const toggleExpanded = (qId) => {
+        setExpandedQuestions(prev => ({ ...prev, [qId]: !prev[qId] }));
+    };
+
     if (loading) {
-        return <div className="p-8 text-center text-slate-500">Đang tải câu hỏi...</div>;
+        return (
+            <div className="qa-container">
+                <div className="qa-loading">
+                    <div className="qa-spinner" />
+                    <span>Đang tải câu hỏi...</span>
+                </div>
+            </div>
+        );
+    }
+
+    if (error) {
+        return (
+            <div className="qa-container">
+                <div className="qa-error">
+                    <p>❌ {error}</p>
+                    <button className="qa-error-retry" onClick={fetchQuestions}>Thử lại</button>
+                </div>
+            </div>
+        );
     }
 
     return (
-        <div className="flex flex-col h-full bg-white">
-            <div className="p-4 border-b border-slate-100 bg-slate-50">
-                <form onSubmit={handlePostQuestion} className="space-y-3">
-                    <input
-                        type="text"
-                        placeholder="Tiêu đề câu hỏi..."
-                        value={newQuestion.title}
-                        onChange={e => setNewQuestion({ ...newQuestion, title: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <textarea
-                        placeholder="Nội dung chi tiết..."
-                        value={newQuestion.content}
-                        onChange={e => setNewQuestion({ ...newQuestion, content: e.target.value })}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[80px] resize-none"
-                    />
-                    <button type="submit" className="w-full bg-blue-600 text-white font-bold py-2 rounded-lg text-sm hover:bg-blue-700 transition">
-                        Gửi câu hỏi
+        <div className="qa-container">
+            {/* Composer */}
+            <div className="qa-composer">
+                {!showComposer ? (
+                    <button className="qa-composer-toggle" onClick={() => setShowComposer(true)}>
+                        <div className="avatar-mini">
+                            {(user?.name || '?').charAt(0).toUpperCase()}
+                        </div>
+                        <span>Đặt câu hỏi...</span>
                     </button>
-                </form>
+                ) : (
+                    <form onSubmit={handlePostQuestion} className="qa-composer-form">
+                        <input
+                            type="text"
+                            placeholder="Tiêu đề câu hỏi..."
+                            value={newQuestion.title}
+                            onChange={e => setNewQuestion({ ...newQuestion, title: e.target.value })}
+                            className="qa-input"
+                            autoFocus
+                        />
+                        <textarea
+                            placeholder="Nội dung chi tiết..."
+                            value={newQuestion.content}
+                            onChange={e => setNewQuestion({ ...newQuestion, content: e.target.value })}
+                            className="qa-input qa-textarea"
+                            style={{ marginTop: 8 }}
+                        />
+                        <div className="qa-composer-actions">
+                            <button
+                                type="button"
+                                className="qa-btn-ghost"
+                                onClick={() => { setShowComposer(false); setNewQuestion({ title: '', content: '' }); }}
+                            >
+                                Hủy
+                            </button>
+                            <button
+                                type="submit"
+                                className="qa-btn-primary"
+                                disabled={posting || !newQuestion.title.trim() || !newQuestion.content.trim()}
+                            >
+                                {posting ? 'Đang gửi...' : 'Gửi câu hỏi'}
+                            </button>
+                        </div>
+                    </form>
+                )}
             </div>
 
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {/* Question List */}
+            <div className="qa-questions-list">
                 {questions.length === 0 ? (
-                    <div className="text-center text-slate-400 text-sm py-8">Chưa có câu hỏi nào cho bài học này.</div>
-                ) : questions.map(q => (
-                    <div key={q.id} className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-sm">
-                        <div className="p-4 border-b border-slate-50">
-                            <div className="flex justify-between items-start mb-2">
-                                <h4 className="font-bold text-slate-800 text-sm leading-snug">{q.title}</h4>
-                                <span className="text-[10px] text-slate-400 whitespace-nowrap ml-2">
-                                    {new Date(q.created_at).toLocaleDateString('vi-VN')}
-                                </span>
-                            </div>
-                            <p className="text-sm text-slate-600 whitespace-pre-wrap mb-3">{q.content}</p>
-
-                            <div className="flex items-center justify-between mt-3">
-                                <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold">
-                                        {q.author_name?.charAt(0).toUpperCase()}
-                                    </div>
-                                    <span className="text-xs font-semibold text-slate-700">{q.author_name}</span>
-                                    {q.author_role !== 'student' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 rounded">GV</span>}
-                                </div>
-                                <button onClick={() => setReplyingTo(replyingTo === q.id ? null : q.id)} className="text-xs font-bold text-blue-600 hover:text-blue-800">
-                                    {q.answers?.length || 0} Trả lời
-                                </button>
-                            </div>
-                        </div>
-
-                        {q.answers && q.answers.length > 0 && (
-                            <div className="bg-slate-50 p-4 space-y-3">
-                                {q.answers.map(a => (
-                                    <div key={a.id} className={`p-3 rounded-lg text-sm border ${a.is_accepted ? 'bg-green-50/50 border-green-200' : 'bg-white border-slate-100'}`}>
-                                        <div className="flex justify-between items-start mb-1">
-                                            <div className="flex items-center gap-2 mb-1">
-                                                <span className="font-bold text-slate-700">{a.author_name}</span>
-                                                {a.author_role !== 'student' && <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 rounded">GV</span>}
-                                                {a.is_accepted && <span className="text-[10px] bg-green-500 text-white px-1.5 rounded">Đã duyệt ✓</span>}
-                                            </div>
-                                            {(user?.id === q.author_id || user?.role === 'instructor' || user?.role === 'admin') && (
-                                                <button onClick={() => handleAcceptAnswer(a.id)} className={`text-[10px] font-bold ${a.is_accepted ? 'text-slate-400' : 'text-green-600'}`}>
-                                                    {a.is_accepted ? 'Bỏ duyệt' : 'Duyệt'}
-                                                </button>
-                                            )}
-                                        </div>
-                                        <p className="text-slate-600 whitespace-pre-wrap">{a.content}</p>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {replyingTo === q.id && (
-                            <div className="p-3 bg-slate-50 border-t border-slate-100 flex gap-2">
-                                <input
-                                    type="text"
-                                    value={replyContent}
-                                    onChange={e => setReplyContent(e.target.value)}
-                                    placeholder="Viết câu trả lời..."
-                                    className="flex-1 px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none"
-                                />
-                                <button onClick={() => handlePostAnswer(q.id)} className="bg-blue-600 text-white px-3 rounded-lg text-sm font-bold">Gửi</button>
-                            </div>
-                        )}
+                    <div className="qa-empty">
+                        <div className="qa-empty-icon">💬</div>
+                        <p>Chưa có câu hỏi nào.</p>
+                        <p style={{ fontSize: 12, marginTop: 4 }}>Hãy là người đầu tiên đặt câu hỏi!</p>
                     </div>
-                ))}
+                ) : (
+                    questions.map(q => {
+                        const isExpanded = expandedQuestions[q.id];
+                        const answerCount = q.answers?.length || 0;
+                        const hasAccepted = q.answers?.some(a => a.is_accepted);
+
+                        return (
+                            <div key={q.id} className="qa-question-card">
+                                {/* Question body */}
+                                <div className="qa-question-body">
+                                    <div className="qa-question-header">
+                                        <div className={getFullAvatarClass(q.author_role)}>
+                                            {(q.author_name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="qa-author-info">
+                                            <div className="qa-author-name">
+                                                {q.author_name}
+                                                {q.author_role === 'instructor' && <span className="qa-badge qa-badge-instructor">GV</span>}
+                                                {q.author_role === 'admin' && <span className="qa-badge qa-badge-admin">Admin</span>}
+                                            </div>
+                                            <div className="qa-time">{formatTimeAgo(q.created_at)}</div>
+                                        </div>
+                                    </div>
+                                    <h4 className="qa-question-title">{q.title}</h4>
+                                    <p className="qa-question-content">{q.content}</p>
+                                </div>
+
+                                {/* Footer: reactions + reply button */}
+                                <div className="qa-footer">
+                                    <ReactionBar
+                                        reactions={q.reactions}
+                                        myReactions={q.my_reactions}
+                                        onToggle={handleToggleReaction}
+                                        targetType="question"
+                                        targetId={q.id}
+                                    />
+                                    <button
+                                        className="qa-reply-toggle"
+                                        onClick={() => {
+                                            toggleExpanded(q.id);
+                                            if (!isExpanded) {
+                                                setReplyingTo(q.id);
+                                            }
+                                        }}
+                                    >
+                                        {answerCount > 0
+                                            ? `${answerCount} trả lời${hasAccepted ? ' ✓' : ''}`
+                                            : 'Trả lời'}
+                                        {answerCount > 0 && (isExpanded ? ' ▲' : ' ▼')}
+                                    </button>
+                                </div>
+
+                                {/* Answers */}
+                                {(isExpanded || answerCount === 0) && answerCount > 0 && (
+                                    <div className="qa-answers-section">
+                                        <div className="qa-answer-thread">
+                                            {q.answers.map(a => (
+                                                <div key={a.id} className={`qa-answer-card ${a.is_accepted ? 'accepted' : ''}`}>
+                                                    <div className="qa-answer-header">
+                                                        <div className={getAvatarClass(a.author_role)}>
+                                                            {(a.author_name || '?').charAt(0).toUpperCase()}
+                                                        </div>
+                                                        <span className="qa-author-name" style={{ fontSize: 12 }}>
+                                                            {a.author_name}
+                                                            {a.author_role === 'instructor' && <span className="qa-badge qa-badge-instructor">GV</span>}
+                                                            {a.author_role === 'admin' && <span className="qa-badge qa-badge-admin">Admin</span>}
+                                                        </span>
+                                                        <span className="qa-time">{formatTimeAgo(a.created_at)}</span>
+                                                        {a.is_accepted && (
+                                                            <span className="qa-accepted-badge">✓ Đã duyệt</span>
+                                                        )}
+                                                    </div>
+                                                    <p className="qa-answer-content">{a.content}</p>
+                                                    <div className="qa-answer-footer">
+                                                        <ReactionBar
+                                                            reactions={a.reactions}
+                                                            myReactions={a.my_reactions}
+                                                            onToggle={handleToggleReaction}
+                                                            targetType="answer"
+                                                            targetId={a.id}
+                                                        />
+                                                        {(user?.id === q.author_id || user?.role === 'instructor' || user?.role === 'admin') && (
+                                                            <button
+                                                                className={`qa-accept-btn ${a.is_accepted ? 'unaccept' : 'accept'}`}
+                                                                onClick={() => handleAcceptAnswer(a.id)}
+                                                            >
+                                                                {a.is_accepted ? 'Bỏ duyệt' : '✓ Duyệt'}
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Reply input */}
+                                {replyingTo === q.id && (
+                                    <div className="qa-reply-input-row">
+                                        <input
+                                            type="text"
+                                            value={replyContent}
+                                            onChange={e => setReplyContent(e.target.value)}
+                                            placeholder="Viết câu trả lời..."
+                                            onKeyDown={e => { if (e.key === 'Enter' && replyContent.trim()) handlePostAnswer(q.id); }}
+                                            autoFocus
+                                        />
+                                        <button
+                                            className="qa-reply-send-btn"
+                                            onClick={() => handlePostAnswer(q.id)}
+                                            disabled={!replyContent.trim()}
+                                        >
+                                            Gửi
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
             </div>
         </div>
     );
