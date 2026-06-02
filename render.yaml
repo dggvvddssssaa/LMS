@@ -1,11 +1,10 @@
-services:
-  # PostgreSQL Database
-  - type: psql
-    name: lms-db
+databases:
+  - name: lms-db
     databaseName: lms_db
     user: lms_user
     plan: free # or starter
-    
+
+services:
   # Backend Web Service
   - type: web
     name: lms-backend
