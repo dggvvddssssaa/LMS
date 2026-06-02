@@ -36,6 +36,9 @@ router.get('/', verifyToken, requireRole('admin'), userController.getAllUsers);
 // Admin get user details
 router.get('/:id/details', verifyToken, requireRole('admin'), userController.getUserDetails);
 
+// Admin gifts a course to a user
+router.post('/:id/gift-course', verifyToken, requireRole('admin'), userController.giftCourse);
+
 // Admin verifies an instructor
 router.put('/:id/verify', verifyToken, requireRole('admin'), userController.verifyInstructor);
 

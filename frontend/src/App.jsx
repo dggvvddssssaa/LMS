@@ -84,18 +84,22 @@ function App() {
           <Route path="teacher/course/:id" element={<TeacherCourseDetail />} />
         </Route>
 
+        {/* Course Management for Admins and Instructors */}
+        <Route element={<AuthRequired roles={['admin', 'instructor']} />}>
+          <Route path="admin/courses" element={<AdminCourseList />} />
+          <Route path="admin/courses-editor" element={<Navigate to="/admin/courses" replace />} />
+          <Route path="admin/courses/:id/editor" element={<CourseEditor />} />
+          <Route path="admin/courses-editor/:id" element={<CourseEditor />} />
+        </Route>
+
         {/* Protected â€” admin only */}
         <Route element={<AuthRequired roles={['admin']} />}>
           <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="admin/dashboard" element={<AdminDashboard />} />
           <Route path="admin/users" element={<UserManagement />} />
           <Route path="admin/live-monitor" element={<AdminLiveMonitor />} />
-          <Route path="admin/courses" element={<AdminCourseList />} />
           <Route path="admin/certificate-templates" element={<AdminCertificateTemplates />} />
           <Route path="admin/certificate-templates/:id/editor" element={<AdminCertificateTemplateEditor />} />
-          <Route path="admin/courses-editor" element={<Navigate to="/admin/courses" replace />} />
-          <Route path="admin/courses/:id/editor" element={<CourseEditor />} />
-          <Route path="admin/courses-editor/:id" element={<CourseEditor />} />
         </Route>
       </Route>
 

@@ -66,6 +66,25 @@ exports.getUserDetails = async (req, res) => {
   }
 };
 
+exports.giftCourse = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { courseIds } = req.body;
+    
+    // Support backward compatibility if someone passes courseId
+    const idsToGift = courseIds || (req.body.courseId ? [req.body.courseId] : []);
+    
+    if (!idsToGift || idsToGift.length === 0) {
+      return res.status(400).json({ success: false, message: 'courseIds is required' });
+    }
+    
+    await UserService.giftCourse(id, idsToGift);
+    res.status(200).json({ success: true, message: 'Đã tặng khóa học thành công' });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
+};
+
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import useAuthStore from '../../store/useAuthStore';
-import { adminService } from '../../services';
+import { adminService, courseService } from '../../services';
 import { useToast } from '../../contexts/ToastContext';
 import { ConfirmDialog, ErrorState, LoadingState } from '../../components/ui';
 import useConfirmDialog from '../../hooks/useConfirmDialog';
@@ -23,6 +23,12 @@ const UserManagement = () => {
     const [selectedUser, setSelectedUser] = useState(null);
     const [detailsLoading, setDetailsLoading] = useState(false);
 
+    const [showGiftModal, setShowGiftModal] = useState(false);
+    const [giftUser, setGiftUser] = useState(null);
+    const [courses, setCourses] = useState([]);
+    const [selectedCourseIds, setSelectedCourseIds] = useState([]);
+    const [giftLoading, setGiftLoading] = useState(false);
+
     const fetchUsers = useCallback(async () => {
         try {
             setLoading(true);
@@ -38,11 +44,25 @@ const UserManagement = () => {
         }
     }, []);
 
+    const fetchCourses = useCallback(async () => {
+        try {
+            const res = await courseService.getPublishedCourses();
+            if (res.success) {
+                setCourses(res.data || []);
+            } else {
+                setCourses([]);
+            }
+        } catch (err) {
+            console.error('Lỗi khi tải danh sách khóa học:', err);
+        }
+    }, []);
+
     useEffect(() => {
         if (user?.role === 'admin') {
             fetchUsers();
+            fetchCourses();
         }
-    }, [user, fetchUsers]);
+    }, [user, fetchUsers, fetchCourses]);
 
     const handleVerifyInstructor = useCallback((id) => {
         openConfirm({
@@ -115,6 +135,25 @@ const UserManagement = () => {
         }
     }, [pushToast]);
 
+    const handleGiftCourse = async (e) => {
+        e.preventDefault();
+        if (selectedCourseIds.length === 0 || !giftUser) return;
+        try {
+            setGiftLoading(true);
+            const res = await adminService.giftCourse(giftUser.id, selectedCourseIds);
+            if (res.success) {
+                pushToast({ type: 'success', title: 'Tặng khóa học thành công' });
+                setShowGiftModal(false);
+                setGiftUser(null);
+                setSelectedCourseIds([]);
+            }
+        } catch (err) {
+            pushToast({ type: 'error', title: 'Không thể tặng khóa học', message: err.message });
+        } finally {
+            setGiftLoading(false);
+        }
+    };
+
     const filteredUsers = users.filter((u) => {
         if (!searchQuery) return true;
         const q = searchQuery.toLowerCase();
@@ -165,7 +204,7 @@ const UserManagement = () => {
                         </thead>
                         <tbody className="text-sm text-slate-700 divide-y divide-slate-50">
                             {filteredUsers.map((u) => (
-                                <UserRow key={u.id} user={u} onViewDetails={handleViewDetails} onVerifyInstructor={handleVerifyInstructor} onDeleteUser={handleDeleteUser} />
+                                <UserRow key={u.id} user={u} onViewDetails={handleViewDetails} onVerifyInstructor={handleVerifyInstructor} onDeleteUser={handleDeleteUser} onGiftCourse={(user) => { setGiftUser(user); setShowGiftModal(true); }} />
                             ))}
                         </tbody>
                     </table>
@@ -224,6 +263,65 @@ const UserManagement = () => {
                 </div>
             )}
 
+            {showGiftModal && giftUser && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                            <h3 className="text-lg font-bold text-slate-800">Tặng Khóa Học</h3>
+                            <button onClick={() => setShowGiftModal(false)} className="text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+                        </div>
+                        <form onSubmit={handleGiftCourse} className="p-6 space-y-4">
+                            <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 flex gap-3 items-center">
+                                <div className="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold">{giftUser.name.charAt(0)}</div>
+                                <div>
+                                    <p className="text-sm text-slate-500">Tặng cho học viên:</p>
+                                    <p className="font-bold text-slate-800">{giftUser.name}</p>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label className="block text-sm font-semibold text-slate-700 mb-2">Chọn khóa học để tặng</label>
+                                <div className="max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl p-2 space-y-1">
+                                    {courses.length === 0 ? (
+                                        <p className="p-4 text-center text-sm text-slate-500">Không có khóa học nào đang xuất bản</p>
+                                    ) : (
+                                        courses.map(c => (
+                                            <label key={c.id} className="flex items-center gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-100">
+                                                <input 
+                                                    type="checkbox" 
+                                                    value={c.id}
+                                                    checked={selectedCourseIds.includes(c.id.toString())}
+                                                    onChange={(e) => {
+                                                        const idStr = c.id.toString();
+                                                        if (e.target.checked) {
+                                                            setSelectedCourseIds(prev => [...prev, idStr]);
+                                                        } else {
+                                                            setSelectedCourseIds(prev => prev.filter(id => id !== idStr));
+                                                        }
+                                                    }}
+                                                    className="w-5 h-5 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                                                />
+                                                <div className="flex-1">
+                                                    <p className="font-semibold text-slate-800 leading-tight">{c.title}</p>
+                                                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{c.description || 'Chưa có mô tả'}</p>
+                                                </div>
+                                            </label>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                            
+                            <div className="pt-4 flex space-x-3">
+                                <button type="button" onClick={() => setShowGiftModal(false)} className="flex-1 px-4 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Hủy</button>
+                                <button type="submit" disabled={giftLoading || selectedCourseIds.length === 0} className="flex-1 px-4 py-2.5 rounded-xl font-bold text-white bg-green-600 hover:bg-green-700 transition disabled:opacity-50 flex justify-center items-center gap-2">
+                                    {giftLoading ? 'Đang xử lý...' : <><span>🎁</span> Tặng Khóa Học</>}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
             <ConfirmDialog
                 isOpen={confirmState.isOpen}
                 title={confirmState.title}
@@ -239,7 +337,7 @@ const UserManagement = () => {
     );
 };
 
-const UserRow = memo(({ user, onViewDetails, onVerifyInstructor, onDeleteUser }) => {
+const UserRow = memo(({ user, onViewDetails, onVerifyInstructor, onDeleteUser, onGiftCourse }) => {
     const [menuOpen, setMenuOpen] = useState(false);
     const menuRef = useRef(null);
 
@@ -281,7 +379,8 @@ const UserRow = memo(({ user, onViewDetails, onVerifyInstructor, onDeleteUser })
                         <div className="absolute right-0 mt-2 w-44 rounded-xl border border-slate-200 bg-white shadow-lg z-30 py-1">
                             <button type="button" onClick={() => runAndCloseMenu(() => onViewDetails(user.id))} className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors">Xem chi tiết</button>
                             {user.role === 'student' && <button type="button" onClick={() => runAndCloseMenu(() => onVerifyInstructor(user.id))} className="w-full px-4 py-2 text-left text-sm text-purple-700 hover:bg-purple-50 transition-colors">Cấp quyền GV</button>}
-                            <button type="button" onClick={() => runAndCloseMenu(() => onDeleteUser(user.id))} className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors">Xóa</button>
+                            <button type="button" onClick={() => runAndCloseMenu(() => onGiftCourse(user))} className="w-full px-4 py-2 text-left text-sm text-green-700 hover:bg-green-50 transition-colors border-t border-slate-100 font-medium">Tặng khóa học</button>
+                            <button type="button" onClick={() => runAndCloseMenu(() => onDeleteUser(user.id))} className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors border-t border-slate-100">Xóa</button>
                         </div>
                     )}
                 </div>

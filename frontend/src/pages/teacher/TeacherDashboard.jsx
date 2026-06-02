@@ -101,6 +101,9 @@ const TeacherDashboard = () => {
                     <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">Khu Vực Giảng Viên</h1>
                     <p className="text-slate-500 mt-2">Quản lý lớp học Live và biên soạn khóa học Video.</p>
                 </div>
+                <Link to="/admin/courses" className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-700 transition shadow-md whitespace-nowrap">
+                    ⚙️ Quản Lý Khóa Học Nâng Cao
+                </Link>
             </div>
 
             {/* My Teaching Sessions */}
@@ -219,12 +222,15 @@ const TeacherDashboard = () => {
                                         <><span className="w-2 h-2 rounded-full bg-blue-500 inline-block"></span> Khóa Video</>
                                     )}
                                 </div>
-                                <div className="flex gap-3 mt-auto">
-                                    <Link to={`/teacher/course/${course.id}`} className="flex-1 bg-slate-100 text-slate-700 text-center py-2.5 rounded-xl hover:bg-slate-200 hover:text-slate-900 transition-colors text-sm font-bold">
-                                        Biên tập nội dung
+                                <div className="flex flex-wrap gap-2 mt-auto">
+                                    <Link to={`/teacher/course/${course.id}`} className="flex-1 min-w-[120px] bg-slate-100 text-slate-700 text-center py-2.5 rounded-xl hover:bg-slate-200 hover:text-slate-900 transition-colors text-sm font-bold">
+                                        Nội dung
+                                    </Link>
+                                    <Link to={`/admin/courses/${course.id}/editor`} className="flex-1 min-w-[120px] bg-blue-50 text-blue-600 hover:bg-blue-100 text-center py-2.5 rounded-xl transition-colors shadow-sm text-sm font-bold">
+                                        Cài đặt
                                     </Link>
                                     {(course.type === 'live' || course.type === 'hybrid') && (
-                                        <Link to={`/session/create?courseId=${course.id}`} className="flex-1 bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800 text-center py-2.5 rounded-xl transition-colors shadow-sm text-sm font-bold">
+                                        <Link to={`/session/create?courseId=${course.id}`} className="w-full bg-purple-50 text-purple-700 hover:bg-purple-100 hover:text-purple-800 text-center py-2.5 rounded-xl transition-colors shadow-sm text-sm font-bold">
                                             Lịch Dạy Live
                                         </Link>
                                     )}

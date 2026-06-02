@@ -1,4 +1,4 @@
-﻿import httpClient from "../core/httpClient";
+import httpClient from "../core/httpClient";
 import { extractApiData } from "../core/apiResult";
 
 export const adminService = {
@@ -24,6 +24,10 @@ export const adminService = {
   },
   async getDashboardStats() {
     const res = await httpClient.get("/stats/dashboard");
+    return extractApiData(res);
+  },
+  async giftCourse(userId, courseIds) {
+    const res = await httpClient.post(`/users/${userId}/gift-course`, { courseIds });
     return extractApiData(res);
   },
 };

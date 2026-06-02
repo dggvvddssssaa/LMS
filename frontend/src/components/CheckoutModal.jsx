@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import { enrollmentService } from '../services';
+import httpClient from '../services/core/httpClient';
 import { useToast } from '../contexts/ToastContext';
 
 const PAYMENT_TIMEOUT = 15 * 60;
@@ -114,6 +115,24 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
         }
     };
 
+    const simulatePayment = async () => {
+        try {
+            await httpClient.post('/webhooks/sepay', {
+                id: Math.floor(Math.random() * 1000000),
+                transferType: 'in',
+                accountNumber: '0867148774',
+                transferAmount: course.sale_price > 0 ? course.sale_price : course.price,
+                content: transactionId,
+                referenceCode: 'SIMULATED_TEST'
+            }, {
+                headers: { 'Authorization': 'Apikey dummy-key' }
+            });
+            pushToast({ type: 'info', title: 'Đã gửi yêu cầu webhook mô phỏng' });
+        } catch (err) {
+            console.error(err);
+            pushToast({ type: 'error', title: 'Lỗi khi mô phỏng', message: err.message });
+        }
+    };
 
 
     const actualPrice = parseFloat(course.sale_price) > 0 ? course.sale_price : course.price;
@@ -187,6 +206,14 @@ const CheckoutModal = ({ course, isOpen, onClose }) => {
                                 </svg>
                                 Đang chờ chuyển khoản...
                             </div>
+                            
+                            {/* Nút giả lập thanh toán chỉ dành cho môi trường dev/test */}
+                            <button 
+                                onClick={simulatePayment} 
+                                className="mt-4 w-full py-2.5 bg-slate-800 text-white rounded-xl text-sm font-bold hover:bg-slate-700 transition"
+                            >
+                                🧪 Mô phỏng nhận tiền (Chỉ để Test)
+                            </button>
                         </div>
                     ) : (
                         <button

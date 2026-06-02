@@ -71,6 +71,61 @@ class UserService {
     if (!user) throw new Error('User not found');
     await UserRepository.deleteById(userId);
   }
+
+  async giftCourse(userId, courseIds) {
+    const prisma = require('../config/prisma');
+    
+    // Check user
+    const user = await UserRepository.findById(userId);
+    if (!user) throw new Error('User not found');
+
+    // Filter out invalid IDs
+    const validIds = courseIds.map(id => Number(id)).filter(id => !isNaN(id));
+    if (validIds.length === 0) throw new Error('No valid course IDs provided');
+
+    // Check courses
+    const courses = await prisma.course.findMany({ where: { id: { in: validIds } } });
+    if (courses.length === 0) throw new Error('No valid courses found');
+
+    // Transaction
+    await prisma.$transaction(async (tx) => {
+      for (const course of courses) {
+        // Check existing enrollment
+        const existing = await tx.enrollment.findUnique({
+          where: { student_id_course_id: { student_id: Number(userId), course_id: course.id } }
+        });
+
+        if (existing) {
+          if (existing.status !== 'active') {
+            await tx.enrollment.update({
+              where: { id: existing.id },
+              data: { status: 'active', enrolled_at: new Date() }
+            });
+          }
+        } else {
+          await tx.enrollment.create({
+            data: {
+              student_id: Number(userId),
+              course_id: course.id,
+              status: 'active',
+              progress: 0,
+              enrolled_at: new Date()
+            }
+          });
+        }
+
+        // Create notification
+        await tx.notifications.create({
+          data: {
+            user_id: Number(userId),
+            message: `Bạn đã được hệ thống tặng khóa học "${course.title}". Chúc bạn học tốt!`,
+            type: 'gift',
+            is_read: false
+          }
+        });
+      }
+    });
+  }
 }
 
 module.exports = new UserService();

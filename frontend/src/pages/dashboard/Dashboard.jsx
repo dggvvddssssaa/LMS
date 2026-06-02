@@ -7,6 +7,7 @@ const Dashboard = () => {
     const [courses, setCourses] = useState([]);
     const [receipts, setReceipts] = useState([]);
     const [certificates, setCertificates] = useState([]);
+    const [notifications, setNotifications] = useState([]);
     const [activeTab, setActiveTab] = useState('courses');
     const { user } = useAuthStore();
 
@@ -43,14 +44,50 @@ const Dashboard = () => {
                 if (res.data.success) setCertificates(res.data.data);
             } catch (err) { console.error(err); }
         };
+        const fetchNotifications = async () => {
+            if (!user) return;
+            try {
+                const res = await httpClient.get('/notifications');
+                if (res.data.success) setNotifications(res.data.data.filter(n => !n.is_read).slice(0, 5));
+            } catch (err) { console.error(err); }
+        };
         fetchMyCourses();
         fetchReceipts();
         fetchCertificates();
+        fetchNotifications();
     }, [user]);
+
+    const markAsRead = async (id) => {
+        try {
+            await httpClient.put(`/notifications/${id}/read`);
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        } catch (err) {
+            console.error('Failed to mark notification as read', err);
+        }
+    };
 
     return (
         <div className="container mx-auto px-4 py-8 max-w-7xl animate-fade-in">
             <h1 className="text-3xl font-extrabold mb-8 text-slate-800 tracking-tight">Xin chào, {user?.name || 'Học viên'}!</h1>
+
+            {notifications.length > 0 && (
+                <div className="mb-8">
+                    <h2 className="text-xl font-bold mb-4 flex items-center gap-2"><span className="text-2xl">🔔</span> Thông báo mới</h2>
+                    <div className="flex flex-col gap-3">
+                        {notifications.map(noti => (
+                            <div key={noti.id} className="bg-white border-l-4 border-blue-500 rounded-r-xl p-4 shadow-sm flex justify-between items-center animate-fade-in">
+                                <div>
+                                    <p className="text-slate-800 font-medium">{noti.message}</p>
+                                    <span className="text-xs text-slate-400 mt-1 block">{new Date(noti.created_at).toLocaleString('vi-VN')}</span>
+                                </div>
+                                <button onClick={() => markAsRead(noti.id)} className="text-blue-600 text-sm hover:underline whitespace-nowrap ml-4">
+                                    Đánh dấu đã đọc
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             <div className="bg-gradient-to-r from-blue-600 to-indigo-700 rounded-3xl p-8 mb-10 text-white shadow-lg shadow-blue-500/20 relative overflow-hidden">
                 <div className="relative z-10 max-w-2xl">
