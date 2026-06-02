@@ -1,6 +1,6 @@
 services:
   # PostgreSQL Database
-  - type: pgo
+  - type: psql
     name: lms-db
     databaseName: lms_db
     user: lms_user
