@@ -18,6 +18,13 @@ async function seed() {
     console.log('✅ Admin exists');
   }
 
+  // 2. Prevent duplicate courses by checking if any exist
+  const existingCourse = await prisma.course.findFirst();
+  if (existingCourse) {
+    console.log('✅ Courses already exist, skipping seed.');
+    return;
+  }
+
   // 2. Create courses
   const c1 = await prisma.course.create({
     data: {
