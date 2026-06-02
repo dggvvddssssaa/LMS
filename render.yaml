@@ -53,6 +53,6 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: "https://lms-backend-6yql.onrender.com/api"
+        value: "https://lms-backend-6yql.onrender.com"
       - key: VITE_SOCKET_URL
         value: "https://lms-backend-6yql.onrender.com"
