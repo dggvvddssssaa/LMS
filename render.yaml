@@ -23,7 +23,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
-        value: "https://lms-frontend-1234.onrender.com" # Replace with your frontend URL later
+        value: "https://lms-frontend-9v1p.onrender.com"
       - key: SEPAY_WEBHOOK_API_KEY
         generateValue: true
       # Note: Mediasoup settings will be ignored by Render's load balancer for UDP, 
@@ -42,6 +42,6 @@ services:
     staticPublishPath: dist
     envVars:
       - key: VITE_API_URL
-        value: "https://lms-backend-1234.onrender.com/api" # Replace with your backend URL
+        value: "https://lms-backend-6yql.onrender.com/api"
       - key: VITE_SOCKET_URL
-        value: "https://lms-backend-1234.onrender.com"
+        value: "https://lms-backend-6yql.onrender.com"
