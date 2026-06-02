@@ -267,6 +267,7 @@ const useWebRTC = (roomId, _isTeacher) => {
                 if (response && response.error) {
                     setError(response.error);
                     setConnectionState('failed');
+                    setIsJoined(false);
                     return;
                 }
                 const { rtpCapabilities, activePeers, canonicalRoomId } = response;
@@ -424,6 +425,7 @@ const useWebRTC = (roomId, _isTeacher) => {
                 if (response?.error) {
                     setError(response.error);
                     setConnectionState('failed');
+                    setIsJoined(false);
                     return;
                 }
                 const { rtpCapabilities, activePeers, canonicalRoomId } = response;

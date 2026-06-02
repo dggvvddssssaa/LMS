@@ -3,6 +3,12 @@ const prisma = require('../config/prisma');
 class LiveClassRepository {
   async create(liveClassData) {
     const { course_id, schedule_config, total_sessions, max_students, status } = liveClassData;
+    
+    const existing = await prisma.live_classes.findFirst({
+      where: { course_id: Number(course_id) }
+    });
+    if (existing) return existing;
+
     return prisma.live_classes.create({
       data: {
         course_id: Number(course_id),

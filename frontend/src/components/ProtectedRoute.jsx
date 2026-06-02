@@ -25,8 +25,8 @@ const ProtectedRoute = ({ children, roles }) => {
         const allowed = roles.some(r => {
             const role = r.toLowerCase();
             // Handle teacher/instructor alias
-            if (role === 'instructor' || role === 'teacher') {
-                return userRole === 'instructor' || userRole === 'teacher';
+            if (role === 'instructor') {
+                return userRole === 'instructor';
             }
             return userRole === role;
         });

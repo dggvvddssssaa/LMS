@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import useAuthStore from '../store/useAuthStore';
 import useWebRTC from '../hooks/useWebRTC';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, MonitorUp, Users, MessageSquare } from 'lucide-react';
+import httpClient from '../services/core/httpClient';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, MonitorUp, Users, MessageSquare, Clock, LogOut } from 'lucide-react';
 
 const ROLE_LABELS = {
     admin: { text: 'Admin', color: 'bg-red-500' },
@@ -17,18 +18,76 @@ const Classroom = () => {
     const auth = useAuthStore();
     const user = auth?.user || { role: 'student', name: 'Guest' };
 
-    const isTeacher = user.role === 'teacher' || user.role === 'instructor' || user.role === 'admin';
+    const isTeacher = user.role === 'instructor' || user.role === 'admin' || user.role === 'teacher';
     const { isJoined, initWebRTC, localStream, localScreenStream, peers, toggleVideo, toggleAudio, toggleScreenShare, isCamOn, isMicOn, isScreenSharing, error, connectionState, messages, sendMessage } = useWebRTC(roomId, isTeacher);
     const [chatInput, setChatInput] = useState('');
     const [activeTab, setActiveTab] = useState('chat');
+    const [sessionInfo, setSessionInfo] = useState(null);
+    const [elapsedTime, setElapsedTime] = useState(0);
+    const [isEndingSession, setIsEndingSession] = useState(false);
 
     const activeScreenShare = localScreenStream || peers.find(p => p.screenStream && p.screenStream.getTracks().length > 0)?.screenStream;
+
+    // Fetch session info on mount
+    useEffect(() => {
+        const fetchSessionInfo = async () => {
+            try {
+                // Try to get session info from the API
+                const res = await httpClient.get(`/sessions/today`);
+                if (res.data?.data) {
+                    const matchingSession = res.data.data.find(s => s.meeting_id === roomId);
+                    if (matchingSession) {
+                        setSessionInfo(matchingSession);
+                    }
+                }
+            } catch (e) {
+                console.debug('Could not fetch session info', e);
+            }
+        };
+        fetchSessionInfo();
+    }, [roomId]);
+
+    // Elapsed time counter
+    useEffect(() => {
+        if (!isJoined) return;
+        const interval = setInterval(() => {
+            setElapsedTime(prev => prev + 1);
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [isJoined]);
+
+    const formatElapsed = (seconds) => {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+        return `${m}:${String(s).padStart(2, '0')}`;
+    };
 
     const handleSendChat = (e) => {
         e.preventDefault();
         if (!chatInput.trim()) return;
         sendMessage(chatInput, user.name);
         setChatInput('');
+    };
+
+    const handleEndSession = async () => {
+        if (!sessionInfo?.id) {
+            navigate(-1);
+            return;
+        }
+        try {
+            setIsEndingSession(true);
+            await httpClient.put(`/sessions/${sessionInfo.id}/end`);
+            navigate(-1);
+        } catch (err) {
+            console.error('Failed to end session:', err);
+            navigate(-1);
+        }
+    };
+
+    const handleLeave = () => {
+        navigate(-1);
     };
 
     const getRoleBadge = (role) => {
@@ -48,7 +107,13 @@ const Classroom = () => {
                         <Video size={32} />
                     </div>
                     <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent mb-2">Lớp học trực tuyến</h1>
-                    <p className="text-slate-400 mb-8 font-medium">Mã lớp: {roomId}</p>
+                    {sessionInfo && (
+                        <p className="text-slate-300 mb-2 font-bold">{sessionInfo.title}</p>
+                    )}
+                    {sessionInfo?.course_title && (
+                        <p className="text-slate-500 mb-4 text-sm">Khóa: {sessionInfo.course_title}</p>
+                    )}
+                    <p className="text-slate-400 mb-8 font-medium">Mã lớp: {roomId.substring(0, 8)}...</p>
 
                     {error && (
                         <div className="mb-6 bg-red-500/20 border border-red-500/50 text-red-200 px-4 py-3 rounded-xl text-sm">
@@ -79,11 +144,23 @@ const Classroom = () => {
     return (
         <div className="bg-slate-900 min-h-screen text-slate-100 p-4 flex flex-col font-sans">
             <header className="flex justify-between items-center mb-4 p-4 bg-slate-800 rounded-2xl shadow-lg border border-slate-700/50">
-                <h1 className="text-xl font-bold text-white flex items-center gap-3">
+                <div className="flex items-center gap-3 min-w-0">
                     <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse shadow-sm shadow-red-500/50"></span>
-                    Lớp học trực tuyến
-                </h1>
-                <div className="flex gap-4 items-center">
+                    <div className="min-w-0">
+                        <h1 className="text-lg font-bold text-white truncate">
+                            {sessionInfo?.title || 'Lớp học trực tuyến'}
+                        </h1>
+                        {sessionInfo?.course_title && (
+                            <p className="text-xs text-slate-400 truncate">{sessionInfo.course_title}</p>
+                        )}
+                    </div>
+                </div>
+                <div className="flex gap-3 items-center shrink-0">
+                    {/* Timer */}
+                    <span className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700/50 border border-slate-600 rounded-full text-sm text-slate-200 font-mono">
+                        <Clock size={14} className="text-red-400" />
+                        {formatElapsed(elapsedTime)}
+                    </span>
                     <span className="flex items-center gap-2 px-4 py-1.5 bg-slate-700/50 border border-slate-600 rounded-full text-sm text-slate-200 font-medium">
                         <Users size={14} />
                         {participantCount}
@@ -91,12 +168,23 @@ const Classroom = () => {
                     <span className="px-4 py-1.5 bg-slate-700/50 border border-slate-600 rounded-full text-sm text-slate-200 font-medium flex items-center gap-2">
                         {user?.name} {getRoleBadge(user.role)}
                     </span>
+                    {/* Leave button */}
                     <button
-                        onClick={() => navigate(-1)}
-                        className="bg-red-500/10 text-red-400 border border-red-500/20 px-6 py-1.5 rounded-full text-sm font-bold hover:bg-red-500 hover:text-white transition-all duration-300 flex items-center gap-2"
+                        onClick={handleLeave}
+                        className="bg-red-500/10 text-red-400 border border-red-500/20 px-5 py-1.5 rounded-full text-sm font-bold hover:bg-red-500 hover:text-white transition-all duration-300 flex items-center gap-2"
                     >
-                        <PhoneOff size={16} /> Rời khỏi
+                        <LogOut size={16} /> Rời
                     </button>
+                    {/* End session button (teacher only) */}
+                    {isTeacher && sessionInfo?.id && (
+                        <button
+                            onClick={handleEndSession}
+                            disabled={isEndingSession}
+                            className="bg-red-600 text-white px-5 py-1.5 rounded-full text-sm font-bold hover:bg-red-700 transition-all duration-300 flex items-center gap-2 disabled:opacity-60 shadow-md shadow-red-500/20"
+                        >
+                            <PhoneOff size={16} /> {isEndingSession ? 'Đang kết thúc...' : 'Kết thúc lớp'}
+                        </button>
+                    )}
                 </div>
             </header>
 
@@ -338,18 +426,21 @@ const Classroom = () => {
                 <button
                     onClick={toggleAudio}
                     className={`p-4 rounded-full transition-all duration-300 shadow-lg ${isMicOn ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-red-500/20 hover:bg-red-500/30 text-red-500 border border-red-500/50'}`}
+                    title={isMicOn ? 'Tắt micro' : 'Bật micro'}
                 >
                     {isMicOn ? <Mic size={24} /> : <MicOff size={24} />}
                 </button>
                 <button
                     onClick={toggleVideo}
                     className={`p-4 rounded-full transition-all duration-300 shadow-lg ${isCamOn ? 'bg-slate-700 hover:bg-slate-600 text-white' : 'bg-red-500/20 hover:bg-red-500/30 text-red-500 border border-red-500/50'}`}
+                    title={isCamOn ? 'Tắt camera' : 'Bật camera'}
                 >
                     {isCamOn ? <Video size={24} /> : <VideoOff size={24} />}
                 </button>
                 <button
                     onClick={toggleScreenShare}
                     className={`p-4 rounded-full transition-all duration-300 shadow-lg ${isScreenSharing ? 'bg-primary hover:bg-blue-600 text-white shadow-primary/30' : 'bg-slate-700 hover:bg-slate-600 text-white border border-slate-600'}`}
+                    title={isScreenSharing ? 'Dừng chia sẻ' : 'Chia sẻ màn hình'}
                 >
                     <MonitorUp size={24} />
                 </button>

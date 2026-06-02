@@ -16,8 +16,9 @@ const errorHandler = (err, req, res, next) => {
 
     res.status(statusCode).json({
         success: false,
-        error: message,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        code: err.code || (statusCode === 404 ? 'NOT_FOUND' : 'INTERNAL_ERROR'),
+        message,
+        details: process.env.NODE_ENV === 'development' ? err.stack : undefined
     });
 };
 

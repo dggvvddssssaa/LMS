@@ -72,19 +72,19 @@ function App() {
         <Route path="courses" element={<CourseList />} />
         <Route path="course/:id" element={<CourseDetail />} />
 
-        {/* Protected — any authenticated user */}
+        {/* Protected â€” any authenticated user */}
         <Route element={<AuthRequired />}>
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="session/create" element={<SessionCreate />} />
         </Route>
 
-        {/* Protected — instructor/teacher only */}
-        <Route element={<AuthRequired roles={['instructor', 'teacher']} />}>
+        {/* Protected â€” instructor only */}
+        <Route element={<AuthRequired roles={['instructor', 'admin']} />}>
           <Route path="teacher/dashboard" element={<TeacherDashboard />} />
           <Route path="teacher/course/:id" element={<TeacherCourseDetail />} />
         </Route>
 
-        {/* Protected — admin only */}
+        {/* Protected â€” admin only */}
         <Route element={<AuthRequired roles={['admin']} />}>
           <Route path="admin" element={<Navigate to="/admin/dashboard" replace />} />
           <Route path="admin/dashboard" element={<AdminDashboard />} />
@@ -99,10 +99,10 @@ function App() {
         </Route>
       </Route>
 
-      {/* Fullscreen Routes — authenticated */}
+      {/* Fullscreen Routes â€” authenticated */}
       <Route path="/session/:id/join" element={<ProtectedRoute><Classroom /></ProtectedRoute>} />
       <Route path="/course/:id/learn" element={<ProtectedRoute><LessonLearning /></ProtectedRoute>} />
-      <Route path="/certificate/:id" element={<CertificateView />} />
+      <Route path="/certificate/:id" element={<ProtectedRoute><CertificateView /></ProtectedRoute>} />
     </Routes>
     </Suspense>
   );

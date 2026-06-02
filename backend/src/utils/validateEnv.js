@@ -15,6 +15,7 @@ const validateEnv = () => {
     'JWT_SECRET',
     'MEDIASOUP_LISTEN_IP',
     'MEDIASOUP_ANNOUNCED_IP',
+    'SEPAY_WEBHOOK_API_KEY',
   ];
 
   for (const key of required) {

@@ -5,7 +5,6 @@ import httpClient from '../../services/core/httpClient';
 export default function CertificateView() {
   const { id } = useParams();
   const [cert, setCert] = useState(null);
-  const [template, setTemplate] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -15,11 +14,6 @@ export default function CertificateView() {
         const res = await httpClient.get(`/certificates/${id}`);
         if (res.data.success) {
           setCert(res.data.data);
-          // fetch template
-          if (res.data.data.template_id) {
-             const tRes = await httpClient.get(`/certificate-templates/${res.data.data.template_id}`);
-             setTemplate(tRes.data.data);
-          }
         } else {
           setError('Không tìm thấy chứng chỉ');
         }
@@ -67,11 +61,11 @@ export default function CertificateView() {
       .replace(/\[Tên Khóa Học\]/g, cert.course_title_snapshot || cert.course_title || '')
       .replace(/\[Ngày Cấp\]/g, cert.issued_date_text || issuedDate)
       .replace(/\[Mã Chứng Chỉ\]/g, `#${cert.certificate_code || String(cert.id).padStart(6, '0')}`)
-      .replace(/\[Người Ký\]/g, template?.issuer_name || cert.instructor_name_snapshot || '')
-      .replace(/\[Chức Danh\]/g, template?.issuer_title || 'Giảng Viên');
+      .replace(/\[Người Ký\]/g, cert.issuer_name || cert.instructor_name_snapshot || '')
+      .replace(/\[Chức Danh\]/g, cert.issuer_title || 'Giảng Viên');
   };
 
-  const hasJsonLayout = template && template.layout_json && template.layout_json.elements && template.layout_json.elements.length > 0;
+  const hasJsonLayout = cert && cert.layout_json && cert.layout_json.elements && cert.layout_json.elements.length > 0;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 via-blue-50 to-indigo-50">
@@ -98,30 +92,47 @@ export default function CertificateView() {
              className="w-full max-w-4xl bg-white relative overflow-hidden print:shadow-none shadow-2xl" 
              style={{ aspectRatio: '1.414' }}
            >
-             <div className="absolute top-0 left-0 w-full h-full">
-               {template.background_url && (
-                 <img src={template.background_url} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
+             <div 
+               className="absolute top-0 left-0 w-full h-full"
+               style={{ containerType: 'inline-size' }}
+             >
+               {cert.background_url && (
+                 <img src={cert.background_url} alt="Background" className="absolute inset-0 w-full h-full object-cover" />
                )}
                
-               {template.layout_json.elements.map(el => (
-                 <div
-                   key={el.id}
-                   className="absolute select-none"
-                   style={{
-                     left: `${(el.x / 1000) * 100}%`,
-                     top: `${(el.y / 707) * 100}%`,
-                     width: `${(el.width / 1000) * 100}%`,
-                     color: el.color,
-                     fontWeight: el.fontWeight,
-                     textAlign: el.align,
-                     containerType: 'inline-size',
-                   }}
-                 >
-                   <div style={{ fontSize: `${el.fontSize / 10}cqw` }}>
-                     {replacePlaceholders(el.text)}
+               {cert.layout_json.elements.map((el, idx) => {
+                 const x = el.x || 0;
+                 const y = el.y || 0;
+                 const width = el.width || 800;
+                 const fontSize = el.fontSize || 24;
+                 const fontWeight = el.fontWeight || (el.bold ? 'bold' : 'normal');
+                 const color = el.color || '#000000';
+                 const align = el.align || 'center';
+                 const text = el.text || el.content || '';
+                 
+                 return (
+                   <div
+                     key={el.id || el.name || `el_${idx}`}
+                     className="absolute select-none"
+                     style={{
+                       left: `${(x / 1000) * 100}%`,
+                       top: `${(y / 707) * 100}%`,
+                       width: `${(width / 1000) * 100}%`,
+                       color: color,
+                       fontWeight: fontWeight,
+                       textAlign: align,
+                     }}
+                   >
+                     {el.type === 'image' ? (
+                       <img src={text} alt="Certificate Element" className="w-full h-auto pointer-events-none" />
+                     ) : (
+                       <div style={{ fontSize: `${(fontSize / 1000) * 100}cqw`, lineHeight: 1.2 }}>
+                         {replacePlaceholders(text)}
+                       </div>
+                     )}
                    </div>
-                 </div>
-               ))}
+                 );
+               })}
              </div>
            </div>
         ) : (
@@ -133,8 +144,8 @@ export default function CertificateView() {
             {/* Fallback Template Body */}
             <div className="h-3 bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600"></div>
             <div className="relative h-full flex flex-col justify-center px-10 md:px-16 text-center -mt-8">
-              {template?.background_url && (
-                 <img src={template.background_url} className="absolute inset-0 w-full h-full object-cover opacity-10" alt="bg"/>
+              {cert?.background_url && (
+                 <img src={cert.background_url} className="absolute inset-0 w-full h-full object-cover opacity-10" alt="bg"/>
               )}
               <div className="relative z-10">
                 <div className="mb-8">

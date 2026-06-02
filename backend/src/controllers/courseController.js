@@ -91,11 +91,12 @@ exports.getLearningOutline = async (req, res) => {
       if (!isEnrolled) {
         return res.status(403).json({ success: false, message: 'You must be enrolled to view the course content' });
       }
-    } else if (role === 'instructor') {
+    } else if (role === 'instructor' || role === 'teacher') {
       if (outline.course.instructor_id !== userId) {
         return res.status(403).json({ success: false, message: 'You do not own this course' });
       }
     }
+    // admin: no check needed, always has access
     
     res.status(200).json({ success: true, data: outline });
   } catch (err) {

@@ -4,7 +4,12 @@ const EnrollmentRepository = require('../repositories/EnrollmentRepository');
 exports.sepayWebhook = async (req, res) => {
   try {
     const apiKey = req.headers.authorization;
-    if (!apiKey || apiKey !== `Apikey ${process.env.SEPAY_WEBHOOK_API_KEY}`) {
+    const expectedKey = process.env.SEPAY_WEBHOOK_API_KEY;
+    if (!expectedKey) {
+      console.error('CRITICAL: SEPAY_WEBHOOK_API_KEY is not set in environment.');
+      return res.status(500).json({ success: false, message: 'Server configuration error' });
+    }
+    if (!apiKey || apiKey !== `Apikey ${expectedKey}`) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 

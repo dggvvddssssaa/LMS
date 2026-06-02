@@ -63,13 +63,31 @@ const authLimiter = rateLimit({
 app.use('/api/auth', authLimiter);
 
 // Healthcheck
-app.get('/health', async (req, res) => {
+app.get('/api/health', async (req, res) => {
   try {
     const prisma = require('./config/prisma');
+    const { redisClient } = require('./utils/redis');
+    const webrtcConfig = require('./webrtc/config');
+    
+    // Check Postgres
     await prisma.$queryRawUnsafe('SELECT 1');
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), uptime: process.uptime() });
+    
+    // Check Redis
+    const isRedisReady = redisClient.isReady;
+    
+    res.json({ 
+      status: 'ok', 
+      timestamp: new Date().toISOString(), 
+      uptime: process.uptime(),
+      db: 'connected',
+      redis: isRedisReady ? 'connected' : 'disconnected',
+      webrtc: {
+        listenIp: webrtcConfig.webRtcTransport.listenIps[0].ip,
+        announcedIp: webrtcConfig.webRtcTransport.listenIps[0].announcedIp
+      }
+    });
   } catch (err) {
-    res.status(503).json({ status: 'error', message: 'Database connection failed' });
+    res.status(503).json({ status: 'error', message: 'Healthcheck failed', error: err.message });
   }
 });
 

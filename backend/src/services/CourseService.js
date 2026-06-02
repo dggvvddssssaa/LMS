@@ -56,7 +56,7 @@ class CourseService {
         await CategoryRepository.setCourseCategories(newCourse.id, courseData.categoryIds);
       }
 
-      if (newCourse.type === 'live' && courseData.live_class_data) {
+      if ((newCourse.type === 'live' || newCourse.type === 'hybrid') && courseData.live_class_data) {
         await LiveClassRepository.create({
           course_id: newCourse.id,
           ...courseData.live_class_data
@@ -75,7 +75,7 @@ class CourseService {
     const course = await CourseRepository.findById(id);
     if (!course) throw new Error('Course not found');
 
-    if (course.type === 'live') {
+    if (course.type === 'live' || course.type === 'hybrid') {
       try {
         course.live_class_details = await LiveClassRepository.findByCourseId(id);
       } catch (e) {

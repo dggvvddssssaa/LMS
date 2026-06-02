@@ -10,8 +10,31 @@ class SessionService {
     if (!lcId || !title || !start_time) {
       throw new Error('Missing required session data (liveClassId, title, start_time)');
     }
+
+    // Auto-resolve teacher_id from course instructor if not provided
+    let resolvedTeacherId = teacher_id || null;
+    if (!resolvedTeacherId && lcId) {
+      try {
+        const liveClass = await prisma.live_classes.findUnique({
+          where: { id: Number(lcId) },
+          select: { course_id: true }
+        });
+        if (liveClass?.course_id) {
+          const course = await prisma.course.findUnique({
+            where: { id: liveClass.course_id },
+            select: { instructor_id: true }
+          });
+          if (course?.instructor_id) {
+            resolvedTeacherId = course.instructor_id;
+          }
+        }
+      } catch (e) {
+        console.error('Failed to auto-resolve teacher_id:', e.message);
+      }
+    }
+
     const session = await SessionRepository.create({
-      liveClassId: lcId, title, start_time, end_time, teacher_id, join_open_minutes
+      liveClassId: lcId, title, start_time, end_time, teacher_id: resolvedTeacherId, join_open_minutes
     });
 
     try {
@@ -53,13 +76,20 @@ class SessionService {
     if (!session) throw new Error('Session not found');
 
     const canOpen = hasRole(user.role, 'admin') ||
-      session.instructor_id === user.id ||
-      session.teacher_id === user.id;
+      Number(session.instructor_id) === Number(user.id) ||
+      Number(session.teacher_id) === Number(user.id);
 
     if (!canOpen) throw new Error('Bạn không có quyền mở lớp này');
     if (session.status === 'ended') throw new Error('Không thể mở lại lớp đã kết thúc');
 
-    const updated = await SessionRepository.openSession(id);
+    if (session.course_id && !session.is_course_published) {
+      await prisma.course.update({
+        where: { id: Number(session.course_id) },
+        data: { is_published: true, status: 'published' }
+      });
+    }
+
+    await SessionRepository.openSession(id);
 
     try {
       await this._notifyClassOpen(session);
@@ -67,7 +97,7 @@ class SessionService {
       console.error('Failed to send open notification:', e.message);
     }
 
-    return updated;
+    return SessionRepository.findById(id);
   }
 
   async endSession(id, user) {
@@ -75,11 +105,12 @@ class SessionService {
     if (!session) throw new Error('Session not found');
 
     const canEnd = hasRole(user.role, 'admin') ||
-      session.instructor_id === user.id ||
-      session.teacher_id === user.id;
+      Number(session.instructor_id) === Number(user.id) ||
+      Number(session.teacher_id) === Number(user.id);
 
     if (!canEnd) throw new Error('Bạn không có quyền kết thúc lớp này');
-    return SessionRepository.endSession(id);
+    await SessionRepository.endSession(id);
+    return SessionRepository.findById(id);
   }
 
   async getSessionForJoin(meetingId) {

@@ -34,8 +34,20 @@ export default function AdminCertificateTemplateEditor() {
       .then(res => {
         const t = res.data.data;
         setTemplate(t);
-        if (t.layout_json && t.layout_json.elements) {
-          setElements(t.layout_json.elements);
+        if (t.layout_json && t.layout_json.elements && t.layout_json.elements.length > 0) {
+          const normalized = t.layout_json.elements.map((el, idx) => ({
+            id: el.id || el.name || `el_${idx}`,
+            type: el.type || 'text',
+            text: el.text || el.content || '[Text]',
+            x: el.x || 0,
+            y: el.y || 0,
+            width: el.width || 800,
+            fontSize: el.fontSize || 24,
+            fontWeight: el.fontWeight || (el.bold ? 'bold' : 'normal'),
+            color: el.color || '#000000',
+            align: el.align || 'center',
+          }));
+          setElements(normalized);
         } else {
           setElements(DEFAULT_ELEMENTS);
         }
@@ -104,6 +116,38 @@ export default function AdminCertificateTemplateEditor() {
     setElements(prev => prev.map(el => el.id === selectedId ? { ...el, [key]: value } : el));
   };
 
+  const handleAddElement = (type) => {
+    const id = `el_${Date.now()}`;
+    let text = 'Văn bản mới';
+    let fontSize = 24;
+    let fontWeight = 'normal';
+    let color = '#334155';
+    let width = 400;
+
+    switch(type) {
+      case 'student_name': text = '[Tên Học Viên]'; fontSize = 48; fontWeight = '900'; color = '#1e293b'; width = 800; break;
+      case 'course_title': text = '[Tên Khóa Học]'; fontSize = 36; fontWeight = 'bold'; color = '#1d4ed8'; width = 800; break;
+      case 'date': text = '[Ngày Cấp]'; fontSize = 18; fontWeight = 'bold'; break;
+      case 'cert_code': text = '[Mã Chứng Chỉ]'; fontSize = 16; break;
+      case 'student_email': text = '[Email Học Viên]'; fontSize = 18; break;
+      case 'image': text = 'https://placehold.co/150x150/png?text=LOGO'; width = 150; break;
+    }
+
+    setElements(prev => [...prev, {
+      id,
+      type: type === 'image' ? 'image' : 'text',
+      text,
+      x: 500 - width/2,
+      y: 350,
+      width,
+      fontSize,
+      fontWeight,
+      color,
+      align: 'center'
+    }]);
+    setSelectedId(id);
+  };
+
   const selectedEl = elements.find(el => el.id === selectedId);
 
   if (loading) return <LoadingState label="Đang tải mẫu chứng chỉ..." />;
@@ -158,46 +202,72 @@ export default function AdminCertificateTemplateEditor() {
             </div>
           </div>
 
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <h2 className="text-lg font-bold text-slate-800 mb-4 border-b border-slate-100 pb-2">Thêm nội dung</h2>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => handleAddElement('text')} className="px-3 py-1.5 text-xs font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg transition">+ Text tự do</button>
+              <button onClick={() => handleAddElement('student_name')} className="px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition">+ Tên Học Viên</button>
+              <button onClick={() => handleAddElement('course_title')} className="px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition">+ Tên Khóa</button>
+              <button onClick={() => handleAddElement('date')} className="px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition">+ Ngày Cấp</button>
+              <button onClick={() => handleAddElement('cert_code')} className="px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition">+ Mã Chứng Chỉ</button>
+              <button onClick={() => handleAddElement('student_email')} className="px-3 py-1.5 text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg transition">+ Email</button>
+              <button onClick={() => handleAddElement('image')} className="px-3 py-1.5 text-xs font-bold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg transition">+ Hình ảnh / Logo</button>
+            </div>
+          </div>
+
           {selectedEl && (
             <div className="bg-blue-50 rounded-2xl shadow-sm border border-blue-200 p-6">
-              <h2 className="text-lg font-bold text-blue-900 mb-4 border-b border-blue-200 pb-2">Chỉnh sửa Element: {selectedEl.id}</h2>
+              <h2 className="text-lg font-bold text-blue-900 mb-4 border-b border-blue-200 pb-2">Chỉnh sửa {selectedEl.type === 'image' ? 'Hình ảnh' : 'Văn bản'}: {selectedEl.id}</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-blue-800 mb-1">Text / Placeholder</label>
+                  <label className="block text-xs font-bold text-blue-800 mb-1">{selectedEl.type === 'image' ? 'URL Hình ảnh' : 'Text / Placeholder'}</label>
                   <input value={selectedEl.text} onChange={e => updateSelectedElement('text', e.target.value)} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-400 outline-none bg-white" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">Cỡ chữ (px)</label>
-                    <input type="number" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', Number(e.target.value))} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">Độ đậm</label>
-                    <select value={selectedEl.fontWeight} onChange={e => updateSelectedElement('fontWeight', e.target.value)} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none">
-                      <option value="normal">Normal</option>
-                      <option value="bold">Bold</option>
-                      <option value="900">Black (900)</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">Màu sắc</label>
-                    <input type="color" value={selectedEl.color} onChange={e => updateSelectedElement('color', e.target.value)} className="w-full h-8 border border-blue-200 rounded-lg bg-white" />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-blue-800 mb-1">Căn lề</label>
-                    <select value={selectedEl.align} onChange={e => updateSelectedElement('align', e.target.value)} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none">
-                      <option value="left">Left</option>
-                      <option value="center">Center</option>
-                      <option value="right">Right</option>
-                    </select>
-                  </div>
-                </div>
+                {selectedEl.type !== 'image' && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Cỡ chữ (px)</label>
+                        <input type="number" value={selectedEl.fontSize} onChange={e => updateSelectedElement('fontSize', Number(e.target.value))} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Độ đậm</label>
+                        <select value={selectedEl.fontWeight} onChange={e => updateSelectedElement('fontWeight', e.target.value)} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none">
+                          <option value="normal">Normal</option>
+                          <option value="bold">Bold</option>
+                          <option value="900">Black (900)</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Màu sắc</label>
+                        <input type="color" value={selectedEl.color} onChange={e => updateSelectedElement('color', e.target.value)} className="w-full h-8 border border-blue-200 rounded-lg bg-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-blue-800 mb-1">Căn lề</label>
+                        <select value={selectedEl.align} onChange={e => updateSelectedElement('align', e.target.value)} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none">
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </div>
+                    </div>
+                  </>
+                )}
                 <div>
                   <label className="block text-xs font-bold text-blue-800 mb-1">Chiều rộng khung (px)</label>
                   <input type="number" value={selectedEl.width} onChange={e => updateSelectedElement('width', Number(e.target.value))} className="w-full px-3 py-1.5 border border-blue-200 rounded-lg text-sm bg-white outline-none" />
                 </div>
+                <button 
+                  onClick={() => {
+                    setElements(prev => prev.filter(el => el.id !== selectedId));
+                    setSelectedId(null);
+                  }} 
+                  className="w-full mt-4 px-3 py-2 bg-red-100 text-red-700 hover:bg-red-200 font-bold rounded-lg text-sm transition"
+                >
+                  🗑️ Xóa thành phần này
+                </button>
               </div>
             </div>
           )}
@@ -222,11 +292,7 @@ export default function AdminCertificateTemplateEditor() {
             <div 
               ref={containerRef}
               className="absolute top-0 left-0 w-full h-full"
-              style={{
-                 // We will render elements using % or a nested scale, 
-                 // but a simpler way is to use container units or SVG-like coordinate mapping.
-                 // Using a wrapper that forces an aspect ratio and percentage positioning is responsive.
-              }}
+              style={{ containerType: 'inline-size' }}
               onClick={() => setSelectedId(null)}
             >
               {template.background_url && (
@@ -248,13 +314,16 @@ export default function AdminCertificateTemplateEditor() {
                       color: el.color,
                       fontWeight: el.fontWeight,
                       textAlign: el.align,
-                      containerType: 'inline-size',
                       transform: 'translate(0, 0)',
                     }}
                   >
-                    <div style={{ fontSize: `${el.fontSize / 10}cqw` }}>
-                      {el.text}
-                    </div>
+                    {el.type === 'image' ? (
+                      <img src={el.text} alt="Element" className="w-full h-auto pointer-events-none" />
+                    ) : (
+                      <div style={{ fontSize: `${(el.fontSize / 1000) * 100}cqw`, lineHeight: 1.2 }}>
+                        {el.text}
+                      </div>
+                    )}
                   </div>
                 );
               })}

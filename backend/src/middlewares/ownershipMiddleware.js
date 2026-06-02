@@ -7,11 +7,18 @@ exports.requireCourseOwnership = (resourceType) => async (req, res, next) => {
     if (user.role === 'admin') return next();
 
     let courseId = null;
+    let sessionTeacherId = null;
 
     if (req.body && req.body.course_id) {
       courseId = req.body.course_id;
     } else if (req.body && req.body.courseId) {
       courseId = req.body.courseId;
+    } else if (resourceType === 'session' && req.body && (req.body.live_class_id || req.body.liveClassId)) {
+      const liveClass = await prisma.live_classes.findUnique({
+        where: { id: Number(req.body.live_class_id || req.body.liveClassId) },
+        select: { course_id: true }
+      });
+      if (liveClass) courseId = Number(liveClass.course_id);
     } else if (req.params && req.params.courseId) {
       courseId = req.params.courseId;
     } else if (req.params && req.params.id) {
@@ -41,7 +48,10 @@ exports.requireCourseOwnership = (resourceType) => async (req, res, next) => {
           where: { id: Number(id) },
           include: { live_classes: { select: { course_id: true } } }
         });
-        if (session && session.live_classes) courseId = Number(session.live_classes.course_id);
+        if (session) {
+          sessionTeacherId = session.teacher_id ? Number(session.teacher_id) : null;
+          if (session.live_classes) courseId = Number(session.live_classes.course_id);
+        }
       } else if (resourceType === 'material') {
         const material = await prisma.course_materials.findUnique({
           where: { id: Number(id) },
@@ -69,17 +79,19 @@ exports.requireCourseOwnership = (resourceType) => async (req, res, next) => {
     }
 
     if (!courseId) {
-       // Cannot resolve courseId, just allow or deny?
-       // Usually means creating something without course_id linked properly, or bad route. 
-       // For safety, allow it to fail later or let it pass for now if not tied to a course yet.
-       return next();
+       // Cannot resolve courseId, deny access to prevent fail-open security bypass
+       return res.status(403).json({ success: false, message: 'Forbidden: Cannot resolve course ownership' });
+    }
+
+    if (resourceType === 'session' && sessionTeacherId !== null && sessionTeacherId === Number(user.id)) {
+      return next();
     }
 
     const course = await prisma.course.findUnique({
       where: { id: Number(courseId) },
       select: { instructor_id: true }
     });
-    if (!course || course.instructor_id !== user.id) {
+    if (!course || Number(course.instructor_id) !== Number(user.id)) {
       return res.status(403).json({ success: false, message: 'Forbidden: You do not own this course' });
     }
     

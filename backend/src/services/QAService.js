@@ -22,15 +22,22 @@ class QAService {
     const questionIds = questions.map(q => q.id);
     const answerIds = questions.flatMap(q => q.answers.map(a => a.id));
 
-    // Fetch all reactions in one query
-    const allReactions = await prisma.course_qa_reactions.findMany({
-      where: {
-        OR: [
-          { target_type: 'question', target_id: { in: questionIds } },
-          { target_type: 'answer', target_id: { in: answerIds } }
-        ]
+    // Fetch all reactions in one query — graceful degradation if table not ready
+    let allReactions = [];
+    try {
+      if (prisma.course_qa_reactions) {
+        allReactions = await prisma.course_qa_reactions.findMany({
+          where: {
+            OR: [
+              { target_type: 'question', target_id: { in: questionIds } },
+              { target_type: 'answer', target_id: { in: answerIds } }
+            ]
+          }
+        });
       }
-    });
+    } catch (e) {
+      console.warn('[QAService] course_qa_reactions query failed, reactions disabled:', e.message);
+    }
 
     // Group reactions by target
     const reactionMap = {};
@@ -147,6 +154,10 @@ class QAService {
   }
 
   async toggleReaction(userId, targetType, targetId, emoji) {
+    if (!prisma.course_qa_reactions) {
+      throw new Error('Reactions feature is not available');
+    }
+
     const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '🎉'];
     if (!ALLOWED_EMOJIS.includes(emoji)) {
       throw new Error('Invalid emoji');

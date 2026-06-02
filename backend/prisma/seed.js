@@ -57,22 +57,32 @@ async function seed() {
   // 3. Create sections + lessons for Course 1
   const s1 = await prisma.section.create({ data: { course_id: c1.id, title: '1. Giới thiệu JavaScript', order_index: 0 } });
   await prisma.lesson.create({ data: { section_id: s1.id, title: 'JavaScript là gì?', content_type: 'video', video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', order_index: 0 } });
-  await prisma.lesson.create({ data: { section_id: s1.id, title: 'Cài đặt môi trường', content_type: 'text', content: '<h2>Cài đặt Node.js</h2><p>Tải từ nodejs.org</p>', order_index: 1 } });
+  await prisma.lesson.create({ data: { section_id: s1.id, title: 'Cài đặt môi trường', content_type: 'text', content_text: '<h2>Cài đặt Node.js</h2><p>Tải từ nodejs.org</p>', order_index: 1 } });
 
   const s2 = await prisma.section.create({ data: { course_id: c1.id, title: '2. Biến và Kiểu dữ liệu', order_index: 1 } });
   await prisma.lesson.create({ data: { section_id: s2.id, title: 'var, let, const', content_type: 'video', video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', order_index: 0 } });
   const ql = await prisma.lesson.create({ data: { section_id: s2.id, title: 'Quiz: Biến', content_type: 'video', order_index: 1 } });
 
-  // 4. Create quizzes
-  await prisma.quiz.create({ data: { lesson_id: ql.id, question: 'Từ khóa nào khai báo biến có thể thay đổi?', options: ['const', 'let', 'var', 'Cả let và var'], correct_answer: 'Cả let và var' } });
-  await prisma.quiz.create({ data: { lesson_id: ql.id, question: 'const có thể gán lại giá trị không?', options: ['Có', 'Không'], correct_answer: 'Không' } });
+  // 4. Create MCQ assignments (quiz model removed — using assignments with payload)
+  await prisma.assignments.create({
+    data: {
+      course_id: c1.id, lesson_id: ql.id, title: 'Quiz: Kiểu biến JavaScript',
+      kind: 'mcq', assignment_scope: 'lesson', score_max: 100, pass_percent: 80,
+      payload: {
+        questions: [
+          { question: 'Từ khóa nào khai báo biến có thể thay đổi?', options: ['const', 'let', 'var', 'Cả let và var'], correct_answer: 'Cả let và var' },
+          { question: 'const có thể gán lại giá trị không?', options: ['Có', 'Không'], correct_answer: 'Không' }
+        ]
+      }
+    }
+  });
 
   // 5. Course 2 sections
   const s3 = await prisma.section.create({ data: { course_id: c2.id, title: '1. React Fundamentals', order_index: 0 } });
   await prisma.lesson.create({ data: { section_id: s3.id, title: 'JSX và Components', content_type: 'video', video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', order_index: 0 } });
   await prisma.lesson.create({ data: { section_id: s3.id, title: 'Props và State', content_type: 'video', video_url: 'https://www.youtube.com/embed/dQw4w9WgXcQ', order_index: 1 } });
 
-  console.log('✅ Seeded 3 courses + sections + lessons + quizzes');
+  console.log('✅ Seeded 3 courses + sections + lessons + assignments');
   console.log('🎉 Done!');
 }
 

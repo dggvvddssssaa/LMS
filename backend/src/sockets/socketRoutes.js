@@ -74,8 +74,8 @@ const initSocket = (httpServer, workers) => {
                 const canonicalRoomId = session.meeting_id || String(session.id);
 
                 const isAdmin = socket.user.role === 'admin';
-                const isSessionTeacher = session.teacher_id === socket.user.id;
-                const isCourseInstructor = session.instructor_id === socket.user.id;
+                const isSessionTeacher = Number(session.teacher_id) === Number(socket.user.id);
+                const isCourseInstructor = Number(session.instructor_id) === Number(socket.user.id);
                 const isTeacher = isAdmin || isSessionTeacher || isCourseInstructor;
 
                 // Student validation
@@ -375,7 +375,7 @@ const initSocket = (httpServer, workers) => {
 
                 // Notify peers in canonical room
                 if (mapping.canonicalRoomId) {
-                    socket.to(mapping.canonicalRoomId).emit("peerLeft", { peerId: socket.id });
+                    io.to(mapping.canonicalRoomId).emit("peerLeft", { peerId: socket.id });
                 }
 
                 socketSessionMap.delete(socket.id);

@@ -33,8 +33,9 @@ const TeacherDashboard = () => {
 
     const courses = useMemo(() => {
         const list = data?.courses || [];
+        if (user?.role === 'admin') return list;
         return list.filter((course) => course.instructor_id === user?.id);
-    }, [data, user?.id]);
+    }, [data, user?.id, user?.role]);
 
     const teachingSessions = data?.teachingSessions || [];
 
@@ -50,7 +51,7 @@ const TeacherDashboard = () => {
                 is_published: false,
             };
 
-            if (newType === 'live') {
+            if (newType === 'live' || newType === 'hybrid') {
                 payload.live_class_data = {
                     schedule_config: {},
                     total_sessions: 0,
@@ -73,13 +74,17 @@ const TeacherDashboard = () => {
         try {
             const res = await httpClient.put(`/sessions/${sessionId}/open`);
             if (res.data.success) {
+                if (res.data.data.status === 'open' && !res.data.data.meeting_id) {
+                    pushToast({ type: 'error', title: 'Lỗi cấu hình', message: 'Không tìm thấy thông tin phòng họp (meeting_id).' });
+                    return;
+                }
                 setData(prev => ({
                     ...prev,
                     teachingSessions: (prev?.teachingSessions || []).map(s =>
                         s.id === sessionId ? { ...s, ...res.data.data } : s
                     )
                 }));
-                pushToast({ type: 'success', title: '🟢 Đã mở lớp' });
+                pushToast({ type: 'success', title: '🟢 Đã mở lớp', message: 'Lớp học đã được xuất bản và sẵn sàng.' });
             }
         } catch (err) {
             pushToast({ type: 'error', title: 'Lỗi', message: err.response?.data?.message || 'Không thể mở lớp' });
@@ -98,13 +103,17 @@ const TeacherDashboard = () => {
                 </div>
             </div>
 
-            {/* My Teaching Sessions Today */}
-            {teachingSessions.length > 0 && (
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl p-6 mb-8 shadow-sm">
-                    <h2 className="text-lg font-bold mb-4 text-purple-800 flex items-center gap-2">
-                        <span className="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></span>
-                        Lớp Tôi Dạy
-                    </h2>
+            {/* My Teaching Sessions */}
+            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-100 rounded-2xl p-6 mb-8 shadow-sm">
+                <h2 className="text-lg font-bold mb-4 text-purple-800 flex items-center gap-2">
+                    <span className="w-3 h-3 rounded-full bg-purple-500 animate-pulse"></span>
+                    Lớp Tôi Dạy
+                </h2>
+                {teachingSessions.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400 bg-white/60 rounded-xl border border-dashed border-purple-200">
+                        Chưa có lớp online nào được gán cho bạn.
+                    </div>
+                ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {teachingSessions.map(session => {
                             const statusInfo = STATUS_MAP[session.status] || STATUS_MAP.scheduled;
@@ -129,13 +138,18 @@ const TeacherDashboard = () => {
                                                 🟢 Mở lớp
                                             </button>
                                         )}
-                                        {(session.status === 'open' || session.status === 'ongoing') && (
+                                        {(session.status === 'open' || session.status === 'ongoing') && session.meeting_id && (
                                             <Link
                                                 to={`/session/${session.meeting_id}/join`}
                                                 className="flex-1 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition text-center"
                                             >
                                                 🎥 Vào dạy
                                             </Link>
+                                        )}
+                                        {(session.status === 'open' || session.status === 'ongoing') && !session.meeting_id && (
+                                            <span className="flex-1 py-2 bg-amber-100 text-amber-700 rounded-xl font-bold text-sm text-center">
+                                                ⚠️ Thiếu Meeting ID
+                                            </span>
                                         )}
                                         {session.status === 'ended' && (
                                             <span className="flex-1 py-2 bg-slate-100 text-slate-500 rounded-xl font-bold text-sm text-center">
@@ -147,8 +161,8 @@ const TeacherDashboard = () => {
                             );
                         })}
                     </div>
-                </div>
-            )}
+                )}
+            </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 mb-8">
                 <h2 className="text-lg font-bold mb-4 text-slate-700">Khởi tạo nhanh khóa học mới</h2>

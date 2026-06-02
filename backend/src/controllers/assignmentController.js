@@ -79,9 +79,46 @@ const checkCourseOwnership = async (courseId, user) => {
   return true;
 };
 
+const checkCourseEnrollmentOrOwnership = async (courseId, user) => {
+  if (user.role === 'admin') return true;
+  if (!courseId) {
+    const err = new Error('Forbidden: Cannot resolve course context');
+    err.statusCode = 403;
+    throw err;
+  }
+  if (user.role === 'instructor') {
+    const course = await prisma.course.findUnique({
+      where: { id: Number(courseId) },
+      select: { instructor_id: true }
+    });
+    if (!course || course.instructor_id !== user.id) {
+      const err = new Error('Forbidden: You do not own this course');
+      err.statusCode = 403;
+      throw err;
+    }
+    return true;
+  }
+  if (user.role === 'student') {
+    const enrollment = await prisma.enrollment.findUnique({
+      where: { student_id_course_id: { student_id: user.id, course_id: Number(courseId) } }
+    });
+    if (!enrollment || enrollment.status !== 'active') {
+      const err = new Error('Forbidden: You are not enrolled in this course');
+      err.statusCode = 403;
+      throw err;
+    }
+    return true;
+  }
+  const err = new Error('Forbidden: Unauthorized role');
+  err.statusCode = 403;
+  throw err;
+};
+
 exports.getAssignmentsByLesson = async (req, res) => {
   try {
     const { lessonId } = req.params;
+    const courseId = await resolveCourseIdForAssignment(null, { lesson_id: lessonId });
+    await checkCourseEnrollmentOrOwnership(courseId, req.user);
     const assignments = await AssignmentRepository.getByLesson(lessonId);
     res.status(200).json({ success: true, data: sanitizeAssignments(assignments, req.user) });
   } catch (err) {
@@ -92,6 +129,8 @@ exports.getAssignmentsByLesson = async (req, res) => {
 exports.getAssignmentsBySection = async (req, res) => {
   try {
     const { sectionId } = req.params;
+    const courseId = await resolveCourseIdForAssignment(null, { section_id: sectionId });
+    await checkCourseEnrollmentOrOwnership(courseId, req.user);
     const assignments = await AssignmentRepository.getBySection(sectionId);
     res.status(200).json({ success: true, data: sanitizeAssignments(assignments, req.user) });
   } catch (err) {
@@ -144,6 +183,9 @@ exports.submitAssignment = async (req, res) => {
     const assignmentId = req.params.id;
     const { answers } = req.body;
     
+    const courseId = await resolveCourseIdForAssignment(assignmentId, null);
+    await checkCourseEnrollmentOrOwnership(courseId, req.user);
+
     // Simple auto-grading logic for MCQ
     const assignment = await AssignmentRepository.getById(assignmentId);
     if (!assignment) {
@@ -199,6 +241,9 @@ exports.getSubmission = async (req, res) => {
     const studentId = req.user.id;
     const assignmentId = req.params.id;
     
+    const courseId = await resolveCourseIdForAssignment(assignmentId, null);
+    await checkCourseEnrollmentOrOwnership(courseId, req.user);
+
     const submission = await AssignmentRepository.getSubmission(assignmentId, studentId);
     res.status(200).json({ success: true, data: submission });
   } catch (err) {
@@ -209,6 +254,7 @@ exports.getSubmission = async (req, res) => {
 exports.getFinalAssignment = async (req, res) => {
   try {
     const { courseId } = req.params;
+    await checkCourseEnrollmentOrOwnership(courseId, req.user);
     const assignment = await AssignmentRepository.getByCourseFinal(courseId);
     res.status(200).json({ success: true, data: sanitizeAssignments(assignment, req.user) });
   } catch (err) {

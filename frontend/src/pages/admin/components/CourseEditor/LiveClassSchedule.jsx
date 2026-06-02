@@ -142,7 +142,7 @@ export default function LiveClassSchedule({ courseId }) {
       const res = await httpClient.put(`/sessions/${id}/open`);
       if (res.data.success) {
         setSessions(sessions.map(s => s.id === id ? { ...s, ...res.data.data } : s));
-        pushToast({ type: 'success', title: '🟢 Đã mở lớp', message: 'Học viên có thể tham gia ngay bây giờ' });
+        pushToast({ type: 'success', title: '🟢 Đã mở lớp', message: 'Khóa học đã được xuất bản và học viên có thể tham gia ngay.' });
       }
     } catch (err) {
       pushToast({ type: 'error', title: 'Lỗi', message: err.response?.data?.message || 'Không thể mở lớp' });
