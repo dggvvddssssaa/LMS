@@ -51,8 +51,20 @@ services:
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: SAMEORIGIN
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     envVars:
       - key: VITE_API_URL
         value: "https://lms-backend-6yql.onrender.com"
       - key: VITE_SOCKET_URL
         value: "https://lms-backend-6yql.onrender.com"
+

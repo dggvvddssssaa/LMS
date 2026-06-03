@@ -56,14 +56,15 @@ class UserRepository {
   }
 
   async getUserDetails(userId) {
+    const id = Number(userId);
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id },
       select: { id: true, name: true, email: true, role: true, is_verified: true, created_at: true }
     });
     if (!user) return null;
 
     const enrollments = await prisma.enrollment.findMany({
-      where: { student_id: userId },
+      where: { student_id: id },
       select: {
         id: true,
         status: true,
@@ -74,7 +75,7 @@ class UserRepository {
     });
 
     const payments = await prisma.payment.findMany({
-      where: { student_id: userId },
+      where: { student_id: id },
       select: { course_id: true, amount: true, status: true }
     });
 

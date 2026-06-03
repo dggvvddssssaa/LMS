@@ -10,6 +10,12 @@ export default defineConfig({
             '@': path.resolve(__dirname, './src'),
         },
     },
+    server: {
+        host: true, // Bind to 0.0.0.0 — allows access from mobile/other devices on LAN
+    },
+    preview: {
+        host: true,
+    },
     test: {
         environment: 'jsdom',
         globals: true,
@@ -30,3 +36,4 @@ export default defineConfig({
         }
     }
 })
+

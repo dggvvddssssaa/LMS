@@ -248,13 +248,69 @@ const UserManagement = () => {
                             {detailsLoading || !selectedUser ? (
                                 <LoadingState label="Đang tải dữ liệu..." />
                             ) : (
-                                <div className="space-y-8">
+                                <div className="space-y-6">
                                     <div className="flex items-center gap-4 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
                                         <div className="w-16 h-16 rounded-full bg-blue-600 text-white flex items-center justify-center text-2xl font-bold">{selectedUser.name.charAt(0)}</div>
-                                        <div>
+                                        <div className="flex-1">
                                             <h4 className="text-xl font-bold text-slate-800">{selectedUser.name}</h4>
                                             <p className="text-slate-500">{selectedUser.email}</p>
                                         </div>
+                                        <span className={`px-3 py-1.5 rounded-lg text-xs font-bold ${selectedUser.role === 'admin' ? 'bg-red-100 text-red-700' : selectedUser.role === 'instructor' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                                            {selectedUser.role?.toUpperCase()}
+                                        </span>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-slate-50 p-4 rounded-xl">
+                                            <p className="text-xs text-slate-500 mb-1">Trạng thái xác minh</p>
+                                            <p className={`font-semibold ${selectedUser.is_verified ? 'text-green-600' : 'text-amber-600'}`}>
+                                                {selectedUser.is_verified ? '✅ Đã xác minh' : '⏳ Chưa xác minh'}
+                                            </p>
+                                        </div>
+                                        <div className="bg-slate-50 p-4 rounded-xl">
+                                            <p className="text-xs text-slate-500 mb-1">Ngày đăng ký</p>
+                                            <p className="font-semibold text-slate-800">{new Date(selectedUser.created_at).toLocaleDateString('vi-VN')}</p>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <h5 className="text-sm font-bold text-slate-700 mb-3 flex items-center gap-2">
+                                            📚 Khóa học đã đăng ký
+                                            <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full text-xs">{selectedUser.enrolled_courses?.length || 0}</span>
+                                        </h5>
+                                        {(!selectedUser.enrolled_courses || selectedUser.enrolled_courses.length === 0) ? (
+                                            <div className="text-center py-8 bg-slate-50 rounded-xl text-slate-400 text-sm">
+                                                Chưa đăng ký khóa học nào
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                                {selectedUser.enrolled_courses.map((course) => (
+                                                    <div key={course.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl hover:bg-slate-100 transition-colors">
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="font-semibold text-slate-800 truncate">{course.title}</p>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className={`text-xs px-2 py-0.5 rounded font-medium ${course.type === 'live' ? 'bg-green-100 text-green-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                                    {course.type === 'live' ? 'Trực tuyến' : 'Video'}
+                                                                </span>
+                                                                <span className={`text-xs px-2 py-0.5 rounded font-medium ${course.enrollment_status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'}`}>
+                                                                    {course.enrollment_status === 'active' ? 'Đang học' : course.enrollment_status}
+                                                                </span>
+                                                                {course.enrolled_at && (
+                                                                    <span className="text-xs text-slate-400">
+                                                                        {new Date(course.enrolled_at).toLocaleDateString('vi-VN')}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        {course.payment_status && (
+                                                            <span className={`text-xs px-2 py-1 rounded-lg font-bold ml-3 whitespace-nowrap ${course.payment_status === 'completed' ? 'bg-green-100 text-green-700' : course.payment_status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-600'}`}>
+                                                                {course.payment_status === 'completed' ? '✓ Đã TT' : course.payment_status === 'pending' ? '⏳ Chờ TT' : course.payment_status}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}

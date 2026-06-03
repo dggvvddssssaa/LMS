@@ -35,10 +35,11 @@ class UserService {
   }
 
   async verifyInstructor(userId) {
-    const user = await UserRepository.findById(userId);
+    const id = Number(userId);
+    const user = await UserRepository.findById(id);
     if (!user) throw new Error('User not found');
 
-    return await UserRepository.updateRoleAndVerification(userId, 'instructor', true);
+    return await UserRepository.updateRoleAndVerification(id, 'instructor', true);
   }
 
   async createUser(userData) {
@@ -67,9 +68,10 @@ class UserService {
   }
 
   async deleteUser(userId) {
-    const user = await UserRepository.findById(userId);
+    const id = Number(userId);
+    const user = await UserRepository.findById(id);
     if (!user) throw new Error('User not found');
-    await UserRepository.deleteById(userId);
+    await UserRepository.deleteById(id);
   }
 
   async giftCourse(userId, courseIds) {
